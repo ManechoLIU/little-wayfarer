@@ -2,3 +2,5 @@
 .lw-moment{position:absolute;z-index:7;transform:translateX(-50%) rotate(-4deg);border:2px solid #f6b047;background:#fff8d2;box-shadow:4px 5px 0 #ce994e35;border-radius:13px;padding:8px 10px;max-width:135px;color:#88652e;font-size:9px;cursor:pointer}.lw-moment b{display:block;font-size:18px;color:#ed8c33}.lw-moment span{display:block;overflow-wrap:anywhere;line-height:1.5}
 .lw-moment.is-recalled{z-index:9;border-color:var(--lw-blue);background:#fffdf2;box-shadow:0 0 0 4px #3155d933,5px 7px 0 #3155d94a;color:#3f4f9a}
 @media(max-width:700px){.lw-head{min-height:64px;padding:10px 15px}.lw-head h2{font-size:16px}.lw-viewport{height:400px}.lw-world{top:-75px}}
+.lw-viewport{touch-action:pan-y pinch-zoom}
+@media(max-width:700px){.lw-viewport{height:clamp(430px,60svh,520px)}.lw-world{top:0}}

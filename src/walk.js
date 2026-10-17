@@ -3,6 +3,8 @@ const WORLD_HEIGHT = 520;
 const SPEED = 190;
 const HOLD_MS = 1000;
 const MAX_TRAIL = 180;
+const LONG_PRESS_MS = 350;
+const DRAG_THRESHOLD = 10;
 
 const STORIES = [
   { id: 'explore', title: '小镇路口', x: 310, y: 365, tone: 'orange', responses: [['step-forward', '向前一步'], ['look-around', '先观察']] },
@@ -17,6 +19,12 @@ const CAMP = { x: 2070, y: 382 };
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const escapeHTML = (value) => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+
+export function classifyWalkGesture(elapsed, distanceMoved, cancelled = false) {
+  if (cancelled) return 'cancel';
+  if (distanceMoved > DRAG_THRESHOLD) return 'drag';
+  return elapsed >= LONG_PRESS_MS ? 'hold' : 'tap';
+}
 
 function validPoint(point, fallback) {
   return point && Number.isFinite(point.x) && Number.isFinite(point.y)
@@ -111,6 +119,11 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
   let campOpened = state.campOpened;
   let currentMomentId = null;
   let pendingMomentId = null;
+  let gesture = null;
+  let gestureDirection = null;
+  let gestureTimer = 0;
+  let suppressClickUntil = 0;
+  let cameraPanOffset = 0;
 
   root.classList.add('lw-walk-root');
   root.innerHTML = `<section class="lw-shell" aria-labelledby="lw-title">
@@ -404,14 +417,14 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
       root.classList.remove('is-raining-on-player');
       return;
     }
-    const inRain = position.x > 500 && position.x < 745 && (!storyMode || !visited.has('setback'));
-    renderCharacter(inRain ? 1 : moving ? 5 : currentTraveler.mood);
-    root.classList.toggle('is-raining-on-player', inRain);
+    renderCharacter(currentTraveler.mood);
+    root.classList.remove('is-raining-on-player');
   }
 
   function moveFrame(dt, now) {
     let dx = 0;
     let dy = 0;
+    if (gestureDirection) { dx += gestureDirection.x; dy += gestureDirection.y; }
     if (keys.has('ArrowLeft') || keys.has('a')) dx -= 1;
     if (keys.has('ArrowRight') || keys.has('d')) dx += 1;
     if (keys.has('ArrowUp') || keys.has('w')) dy -= 1;
@@ -455,7 +468,8 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
 
   function paint(now) {
     const viewportWidth = viewport.clientWidth;
-    camera += (clamp(position.x - viewportWidth * .43, 0, Math.max(0, WORLD_WIDTH - viewportWidth)) - camera) * .13;
+    const followCamera = position.x - viewportWidth * .43;
+    camera += (clamp(followCamera + cameraPanOffset, 0, Math.max(0, WORLD_WIDTH - viewportWidth)) - camera) * .13;
     world.style.transform = `translate3d(${-camera}px,0,0)`;
     player.style.transform = `translate3d(${position.x - 58}px,${position.y - 116}px,0)`;
     character.style.setProperty('--facing', direction);
@@ -490,14 +504,23 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
     if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'w', 'a', 's', 'd'].includes(key) || keyboardBlocked(event)) return;
     event.preventDefault();
     pendingMomentId = null;
+    cameraPanOffset = 0;
     keys.add(key);
   }
   function onKeyUp(event) { keys.delete(event.key.length === 1 ? event.key.toLowerCase() : event.key); }
-  function stopKeys() { keys.clear(); }
+  function stopGesture() {
+    window.clearTimeout(gestureTimer);
+    gestureTimer = 0;
+    gestureDirection = null;
+    gesture = null;
+  }
+  function stopKeys() { keys.clear(); stopGesture(); }
 
   function onViewportClick(event) {
     if (event.target.closest('button') || busy || finished) return;
+    if (performance.now() < suppressClickUntil) { event.preventDefault(); return; }
     pendingMomentId = null;
+    cameraPanOffset = 0;
     const rect = viewport.getBoundingClientRect();
     const worldRect=world.getBoundingClientRect();target = validPoint({ x: event.clientX - worldRect.left, y: event.clientY - worldRect.top }, position);
     viewport.focus({ preventScroll: true });
@@ -510,6 +533,7 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
     const map = { left: 'ArrowLeft', right: 'ArrowRight', up: 'ArrowUp', down: 'ArrowDown' };
     const key = map[button.dataset.move];
     pendingMomentId = null;
+    cameraPanOffset = 0;
     keys.add(key);
     button.setPointerCapture?.(event.pointerId);
     const release = () => { keys.delete(key); button.removeEventListener('pointerup', release); button.removeEventListener('pointercancel', release); };
@@ -517,8 +541,68 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
     button.addEventListener('pointercancel', release);
   }
 
+  function updateHoldDirection(clientX, clientY) {
+    const worldRect = world.getBoundingClientRect();
+    const dx = clientX - worldRect.left - position.x;
+    const dy = clientY - worldRect.top - position.y;
+    const magnitude = Math.hypot(dx, dy);
+    gestureDirection = magnitude > 4 ? { x: dx / magnitude, y: dy / magnitude } : { x: direction, y: 0 };
+  }
+
+  function onGestureStart(event) {
+    if (!event.isPrimary || event.button > 0 || event.target.closest('button') || busy || finished) return;
+    stopGesture();
+    gesture = { id: event.pointerId, startX: event.clientX, startY: event.clientY, lastX: event.clientX, lastY: event.clientY, startedAt: performance.now(), startPan: cameraPanOffset, dragging: false, holding: false };
+    viewport.setPointerCapture?.(event.pointerId);
+    gestureTimer = window.setTimeout(() => {
+      if (!gesture || gesture.id !== event.pointerId || gesture.dragging) return;
+      gesture.holding = true;
+      pendingMomentId = null;
+      target = null;
+      cameraPanOffset = 0;
+      updateHoldDirection(gesture.lastX, gesture.lastY);
+      hint.textContent = '按住继续走，松手停下。';
+    }, LONG_PRESS_MS);
+  }
+
+  function onGestureMove(event) {
+    if (!gesture || gesture.id !== event.pointerId) return;
+    gesture.lastX = event.clientX;
+    gesture.lastY = event.clientY;
+    const dx = event.clientX - gesture.startX;
+    const dy = event.clientY - gesture.startY;
+    if (!gesture.holding && Math.hypot(dx, dy) > DRAG_THRESHOLD) {
+      window.clearTimeout(gestureTimer);
+      gesture.dragging = true;
+      pendingMomentId = null;
+      target = null;
+      cameraPanOffset = gesture.startPan - dx;
+      hint.textContent = '正在查看这段路，松手后可以继续走。';
+      event.preventDefault();
+    } else if (gesture.dragging) {
+      cameraPanOffset = gesture.startPan - dx;
+      event.preventDefault();
+    } else if (gesture.holding) {
+      updateHoldDirection(event.clientX, event.clientY);
+      event.preventDefault();
+    }
+  }
+
+  function onGestureEnd(event) {
+    if (!gesture || gesture.id !== event.pointerId) return;
+    const kind = classifyWalkGesture(performance.now() - gesture.startedAt, Math.hypot(gesture.lastX - gesture.startX, gesture.lastY - gesture.startY), event.type === 'pointercancel');
+    const consumed = gesture.dragging || gesture.holding || kind === 'drag' || kind === 'hold';
+    stopGesture();
+    if (consumed) {
+      suppressClickUntil = performance.now() + 500;
+      hint.textContent = replayMode ? '回看这段路：前后走动，看看当时的样子' : '点地面，或长按一个方向继续走。';
+    }
+  }
+
+  function onVisibilityChange() { if (document.hidden) stopKeys(); }
+
   function onRootClick(event) {
-    const momentNode=event.target.closest('[data-moment]');if(momentNode){const moment=moments.find((item)=>item&&String(item.id)===momentNode.dataset.moment&&Number.isFinite(item.x)&&Number.isFinite(item.y));if(moment){keys.clear();hold=null;pendingMomentId=String(moment.id);target=validPoint({x:moment.x,y:moment.y},position);hint.textContent=`正在走向这一笔 · ${String(moment.label||'记录')}`;}return;}
+    const momentNode=event.target.closest('[data-moment]');if(momentNode){const moment=moments.find((item)=>item&&String(item.id)===momentNode.dataset.moment&&Number.isFinite(item.x)&&Number.isFinite(item.y));if(moment){keys.clear();hold=null;cameraPanOffset=0;pendingMomentId=String(moment.id);target=validPoint({x:moment.x,y:moment.y},position);hint.textContent=`正在走向这一笔 · ${String(moment.label||'记录')}`;}return;}
     if(event.target.closest('[data-write]')){target=null;pendingMomentId=null;keys.clear();try{if(replayMode){if(currentMomentId!=null)onMoment?.(currentMomentId);}else onWrite?.({x:Math.round(position.x),y:Math.round(position.y)});}catch(error){showToast(error?.message||(replayMode?'这一笔暂时看不了。':'暂时不能记下这一笔。'));}return;}
     const sign = event.target.closest('.lw-sign');
     if (sign) {
@@ -553,7 +637,12 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
   window.addEventListener('keyup', onKeyUp);
   window.addEventListener('blur', stopKeys);
   viewport.addEventListener('click', onViewportClick);
+  viewport.addEventListener('pointerdown', onGestureStart);
+  viewport.addEventListener('pointermove', onGestureMove);
+  viewport.addEventListener('pointerup', onGestureEnd);
+  viewport.addEventListener('pointercancel', onGestureEnd);
   root.addEventListener('click', onRootClick);
+  document.addEventListener('visibilitychange', onVisibilityChange);
   root.querySelector('.lw-directions').addEventListener('pointerdown', moveButton);
   if (replayMode) syncReplayCharacter();
   else renderCharacter(currentTraveler.mood);
@@ -566,13 +655,19 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
     destroy() {
       if (destroyed) return;
       destroyed = true;
+      stopGesture();
       cancelAnimationFrame(raf);
       window.clearTimeout(showToast.timer);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', stopKeys);
       viewport.removeEventListener('click', onViewportClick);
+      viewport.removeEventListener('pointerdown', onGestureStart);
+      viewport.removeEventListener('pointermove', onGestureMove);
+      viewport.removeEventListener('pointerup', onGestureEnd);
+      viewport.removeEventListener('pointercancel', onGestureEnd);
       root.removeEventListener('click', onRootClick);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       root.querySelector('.lw-directions')?.removeEventListener('pointerdown', moveButton);
       root.classList.remove('lw-walk-root', 'is-raining-on-player');
     },

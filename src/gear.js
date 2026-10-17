@@ -123,6 +123,12 @@ export function gearHTML(traveler, equippedIds, mood = traveler?.mood) {
   return `<span class="lw-gear-layer" aria-label="旅途中获得的随身物件${giftLabel}">${items}${gifts.html}${MOOD_SVG[safeMood] || ''}</span>`;
 }
 
+export function recordOutfitHTML(outfit) {
+  if (!['scarf', 'cape', 'sprout'].includes(outfit)) return '';
+  const labels = { scarf: '这笔记录的旅行装扮：围巾', cape: '这笔记录的旅行装扮：披风', sprout: '这笔记录的旅行装扮：背包' };
+  return `<span class="lw-record-outfit lw-record-outfit-${outfit}" aria-label="${labels[outfit]}" data-record-outfit="${outfit}">${SVG[outfit]}</span>`;
+}
+
 export const gearCatalog = Object.freeze(Object.values(GEAR).map((item) => Object.freeze({ ...item })));
 
 const TRACE_ICONS = Object.freeze({
