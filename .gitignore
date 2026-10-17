@@ -3,3 +3,6 @@ node_modules/
 *.zip
 archive/
 design/
+
+.vercel/
+.vercel

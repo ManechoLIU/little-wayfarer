@@ -125,15 +125,21 @@ test('batch rejects empty or overlong input atomically', async () => {
   assert.equal(Number(traveler.marks), 0);
 });
 
-test('encourage is one-time per other wallet, supports gifts 0..2, and uses marks 12..14', async () => {
+test('encourage is one-time per other wallet, supports gifts 0..3, and gift3 is a transient interaction', async () => {
   const id = await create();
   await assertReverts(contract.encourage(id, 0));
-  await assertReverts(contract.connect(companion).encourage(id, 3));
-  await (await contract.connect(companion).encourage(id, 0)).wait();
-  assert.equal(await contract.hasEncouraged(id, await companion.getAddress()), true);
+  await (await contract.connect(companion).encourage(id, 3)).wait();
+  const gift3Traveler = await contract.getTraveler(id);
+  assert.equal(Number(gift3Traveler.marks), 0);
+  assert.equal(Number(gift3Traveler.mood), 0);
+  assert.equal(Number(gift3Traveler.lastInteraction), 3);
+  assert.ok(Number(gift3Traveler.lastInteractionAt) > 0);
+  await assertReverts(contract.connect(third).encourage(id, 4));
+  await (await contract.connect(third).encourage(id, 0)).wait();
+  assert.equal(await contract.hasEncouraged(id, await third.getAddress()), true);
   assert.equal(Number((await contract.getTraveler(id)).marks) & (1 << 12), 1 << 12);
   assert.equal(Number((await contract.getTraveler(id)).mood), 4);
-  await assertReverts(contract.connect(companion).encourage(id, 1));
+  await assertReverts(contract.connect(third).encourage(id, 1));
 
   const id2 = await create('二号', 8, 0, 0);
   await (await contract.connect(companion).encourage(id2, 1)).wait();
