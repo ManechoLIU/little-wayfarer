@@ -267,7 +267,7 @@ export function mountSocial({ root, invite, owned = [], readContract, writeContr
       renderInbox();
       renderWorn();
       updateReaction();
-      if (!reactionIsFresh()) liveEl.textContent = `已经更新 · 收到 ${current.souvenirCount} 件纪念物`;
+      if (!reactionIsFresh()) liveEl.textContent = '旅伴的样子已更新 · 每一份心意，都有人记得。';
     } catch (error) {
       consecutiveFailures += 1;
       const stopped = consecutiveFailures >= 2;
