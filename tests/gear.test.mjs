@@ -60,3 +60,16 @@ test('only the latest three records render and event symbols remain distinct', (
   assert.match(html, /lw-gear-trace-mistake/);
   assert.match(html, /lw-gear-trace-help/);
 });
+
+test('a newly received friend gift appears even after plain-note outfits were saved empty', () => {
+  const before={chapter:0,marks:[],memories:[]};
+  const after={...before,marks:['一朵小花']};
+  assert.deepEqual(autoEquipGear(before,after,[]),['flower']);
+});
+
+test('receiving gifts respects the three-item limit and does not rewear gifts intentionally removed', () => {
+  const before={chapter:4,marks:['勇气','好奇','修补'],memories:[]};
+  const after={...before,marks:[...before.marks,'一句加油']};
+  assert.deepEqual(autoEquipGear(before,after,['cape','compass','patch']),['compass','patch','heartpin']);
+  assert.deepEqual(autoEquipGear(after,after,[]),[]);
+});

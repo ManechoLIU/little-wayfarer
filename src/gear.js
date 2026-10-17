@@ -118,6 +118,12 @@ export function autoEquipGear(before, after, currentEquipped = []) {
     equipped.push(gearId);
     equipped = equipped.slice(-3);
   }
+  const previousMarks = new Set(Array.isArray(before?.marks) ? before.marks : []);
+  for (const mark of Array.isArray(after?.marks) ? after.marks : []) {
+    if (!['一朵小花', '一句加油', '一颗星星'].includes(mark) || previousMarks.has(mark)) continue;
+    const id = MARK_TO_GEAR[mark];
+    equipped = [...equipped.filter(item => item !== id), id].slice(-3);
+  }
   return equipped;
 }
 
