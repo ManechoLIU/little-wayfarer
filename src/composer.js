@@ -100,7 +100,7 @@ export function normalizeComposerDraft(value, { textOnly = false } = {}) {
   return { text, analyzedText, analysisSource, summary, candidates };
 }
 
-export function mountComposer({ root, traveler, art, onSave, onWalk, initialDraft, onDraft, analyzeJournal, provider = 'DeepSeek' } = {}) {
+export function mountComposer({ root, traveler, art, onSave, onWalk, initialDraft, onDraft, analyzeJournal, provider = 'DeepSeek', onModelSettings } = {}) {
   if (!(root instanceof Element)) throw new TypeError('mountComposer 需要有效的 root');
   if (!traveler || typeof art !== 'function' || typeof onSave !== 'function') throw new TypeError('mountComposer 缺少 traveler、art 或 onSave');
 
@@ -123,6 +123,7 @@ export function mountComposer({ root, traveler, art, onSave, onWalk, initialDraf
       <div class="lw-compose-count"><span>这一笔，会成为它身上的新痕迹。</span><b data-compose-count>0 / 4000</b></div>
     </section>
     <p class="lw-compose-private" data-compose-private></p>
+    ${typeof onModelSettings === 'function' ? '<button type="button" class="lw-compose-back" data-compose-model>使用自己的模型</button>' : ''}
     <div class="lw-compose-error" data-compose-error role="alert" hidden></div>
     <div class="lw-compose-savebar">
       <button type="button" data-compose-save>记下这一笔</button>
@@ -138,6 +139,7 @@ export function mountComposer({ root, traveler, art, onSave, onWalk, initialDraf
   const plainButton = root.querySelector('[data-compose-plain]');
   const privacy = root.querySelector('[data-compose-private]');
   const backButton = root.querySelector('[data-compose-back]');
+  const modelButton = root.querySelector('[data-compose-model]');
   const status = root.querySelector('[data-compose-status]');
   const error = root.querySelector('[data-compose-error]');
   root.querySelector('[data-compose-art]').innerHTML = art(traveler);
@@ -160,6 +162,7 @@ export function mountComposer({ root, traveler, art, onSave, onWalk, initialDraf
     saveButton.disabled = locked;
     plainButton.disabled = locked;
     if (backButton) backButton.disabled = locked;
+    if (modelButton) modelButton.disabled = locked;
     saveButton.textContent = locked ? '正在记下…' : '记下这一笔';
   }
 
@@ -220,6 +223,7 @@ export function mountComposer({ root, traveler, art, onSave, onWalk, initialDraf
   }
 
   function onClick(event) {
+    if (event.target.closest('[data-compose-model]')) { if (!busy) onModelSettings?.(); return; }
     if (event.target.closest('[data-compose-plain]')) { save(false); return; }
     if (event.target.closest('[data-compose-save]')) { save(); return; }
     if (!busy && event.target.closest('[data-compose-back]')) onWalk?.();
