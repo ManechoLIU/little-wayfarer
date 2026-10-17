@@ -87,9 +87,12 @@ export function mountSocial({ root, invite, owned = [], readContract, writeContr
   let inbox = [];
   let sources = [];
   let worn = null;
+  let wornReadingId = null;
   let destroyed = false;
   let actionBusy = false;
   let refreshTask = null;
+  let panelsTask = null;
+  let panelsQueued = false;
   let consecutiveFailures = 0;
   let pollTimer = 0;
   let reactionTimer = 0;
@@ -113,13 +116,13 @@ export function mountSocial({ root, invite, owned = [], readContract, writeContr
       <p class="lw-social-note">心意可以反复送，收到的花、鼓励和星星会累积在它身上。每次需要钱包确认，花少量测试 MON 付手续费。</p>
       <div class="lw-social-reactions">${REACTIONS.map((item) => `<button type="button" data-social-action="reaction" data-social-gift="${item.id}"><b>${item.label}</b><span>${item.note}</span></button>`).join('')}</div>
     </section>
-    <details class="lw-social-panel lw-social-extra"><summary>送一件有故事的物件</summary>
+    <details class="lw-social-panel lw-social-extra" data-social-source-panel><summary>送一件有故事的物件</summary>
       <p class="lw-social-note">从自己的旅伴身上，送出一件有故事的纪念。你仍会保留原来的那一件。</p>
-      <div class="lw-social-sources" data-social-sources><p class="lw-social-empty">正在打开自己的纪念物…</p></div>
+      <div class="lw-social-sources" data-social-sources><p class="lw-social-empty">展开后，看看自己有哪些纪念物可以送。</p></div>
     </details>
-    <details class="lw-social-panel lw-social-extra"><summary>看看收到的纪念物</summary><button type="button" class="lw-social-unwear" data-social-action="unwear" hidden>摘下当前物件</button>
+    <details class="lw-social-panel lw-social-extra" data-social-inbox-panel><summary>看看收到的纪念物</summary><button type="button" class="lw-social-unwear" data-social-action="unwear" hidden>摘下当前物件</button>
       <p class="lw-social-note">送来的心意会留在这里。由旅伴的主人决定，带上哪一件。</p>
-      <div class="lw-social-inbox" data-social-inbox><p class="lw-social-empty">正在打开收件箱…</p></div>
+      <div class="lw-social-inbox" data-social-inbox><p class="lw-social-empty">展开后，看看收到的纪念物。</p></div>
     </details>
     <footer class="lw-social-footer"><span>邀请朋友来看它</span><input data-social-url readonly aria-label="同行链接" inputmode="none"><button type="button" data-social-copy>复制链接</button><p>这里只分享旅伴和心意，不展示私人记录。</p></footer>
     <div class="lw-social-error" data-social-error role="alert" hidden></div>
@@ -265,29 +268,18 @@ export function mountSocial({ root, invite, owned = [], readContract, writeContr
       const previousWorn = current.wornSouvenirId;
       const raw = await contract.getTraveler(current.id);
       const giftCounts = await readGiftCounts(contract, current.id);
+      if (destroyed) return false;
       current = { ...normalizeTraveler(raw, current), ...(giftCounts ? { giftCounts } : {}) };
       root.querySelector('.lw-social-note').textContent = giftCounts ? '心意可以反复送，花、鼓励和星星会累积在它身上。每次需要钱包确认，花少量测试 MON 付手续费。' : '这是旧版同行卡，朋友只能送一次。请让主人换用新版同行卡，便可反复送心意。';
-      const inboxChanged = !inboxLoaded || current.souvenirCount !== previousCount || current.wornSouvenirId !== previousWorn;
-      if (manual || inboxChanged) {
-        inbox = await readInbox(contract, current.souvenirCount);
-        inboxLoaded = true;
-      }
-      if (manual || !sourcesLoaded) {
-        sources = await readSources(contract);
-        sourcesLoaded = true;
-      }
-      worn = current.wornSouvenirId !== '0'
-        ? inbox.find((item) => item.id === current.wornSouvenirId) || normalizeSouvenir(await contract.souvenirs(current.wornSouvenirId), current.wornSouvenirId)
-        : null;
-      if (destroyed) return false;
       consecutiveFailures = 0;
       clearError();
+      // Show confirmed gifts and short-lived effects before optional panels.
       renderIdentity();
-      renderSources();
-      renderInbox();
-      renderWorn();
+      refreshWorn(contract);
       updateReaction();
       if (!reactionIsFresh()) liveEl.textContent = '旅伴的样子已更新 · 每一份心意，都有人记得。';
+      const inboxChanged = !inboxLoaded || current.souvenirCount !== previousCount || current.wornSouvenirId !== previousWorn;
+      refreshPanels(contract, { manual, inboxChanged });
       return true;
     } catch (error) {
       consecutiveFailures += 1;
@@ -297,6 +289,79 @@ export function mountSocial({ root, invite, owned = [], readContract, writeContr
       return false;
     } finally {
       if (!destroyed && consecutiveFailures < 2) pollTimer = window.setTimeout(() => refresh(), POLL_MS);
+    }
+  }
+
+  function refreshPanels(contract, options) {
+    if (destroyed) return;
+    if (panelsTask) { panelsQueued ||= options.manual || options.inboxChanged; return; }
+    panelsTask = readPanels(contract, options).finally(() => {
+      panelsTask = null;
+      if (panelsQueued && !destroyed) {
+        panelsQueued = false;
+        refreshPanels(readContract(current.address), { manual: true, inboxChanged: true });
+      }
+    });
+    // The panels own their errors; they must never reject the primary refresh.
+    panelsTask.catch(() => { if (!destroyed) reportError('纪念物面板暂时没能更新，仍可继续送花。', true); });
+  }
+
+  async function readPanels(contract, { manual, inboxChanged }) {
+    const requestedCount = current.souvenirCount;
+    if (root.querySelector('[data-social-inbox-panel]').open && (manual || inboxChanged)) {
+      try {
+        const nextInbox = await readInbox(contract, requestedCount);
+        if (destroyed) return;
+        if (requestedCount === current.souvenirCount) {
+          inbox = nextInbox;
+          inboxLoaded = true;
+          renderInbox();
+        } else {
+          inboxLoaded = false;
+          panelsQueued = true;
+        }
+      } catch {
+        if (destroyed) return;
+        inboxEl.innerHTML = '<p class="lw-social-empty">纪念物暂时没能读取，点「看看新变化」重试。已经收到的花、鼓励和星星不受影响。</p>';
+        inboxLoaded = true; // Retry failures on manual refresh, not every poll.
+      }
+    }
+    if (root.querySelector('[data-social-source-panel]').open && (manual || !sourcesLoaded)) {
+      try {
+        const nextSources = await readSources(contract);
+        if (destroyed) return;
+        sources = nextSources;
+        renderSources();
+      } catch {
+        if (destroyed) return;
+        sourcesEl.innerHTML = '<p class="lw-social-empty">自己的纪念物暂时没能读取，点「看看新变化」重试。仍然可以送花、鼓励和星星。</p>';
+      }
+      sourcesLoaded = true;
+    }
+  }
+
+  function refreshWorn(contract) {
+    const id = current.wornSouvenirId;
+    if (id === '0') { worn = null; renderWorn(); return; }
+    if (worn?.id === id) return;
+    worn = null;
+    renderWorn();
+    wornEl.textContent = '正在读取穿戴的纪念物…';
+    unwearButton.hidden = false;
+    if (wornReadingId === id) return;
+    wornReadingId = id;
+    Promise.resolve().then(() => contract.souvenirs(id)).then(raw => {
+      if (destroyed || current.wornSouvenirId !== id) return;
+      worn = normalizeSouvenir(raw, id);
+      renderWorn();
+    }).catch(() => {
+      if (!destroyed && current.wornSouvenirId === id) wornEl.textContent = '穿戴的纪念物暂时没能读取。';
+    }).finally(() => { if (wornReadingId === id) wornReadingId = null; });
+  }
+
+  function onToggle(event) {
+    if (!actionBusy && event.target.open && (event.target.matches('[data-social-source-panel]') || event.target.matches('[data-social-inbox-panel]'))) {
+      refresh({ manual: true });
     }
   }
 
@@ -359,9 +424,8 @@ export function mountSocial({ root, invite, owned = [], readContract, writeContr
   }
 
   root.addEventListener('click', onClick);
+  root.addEventListener('toggle', onToggle, true);
   renderIdentity();
-  renderSources();
-  renderInbox();
   renderWorn();
   refresh();
 
@@ -372,6 +436,7 @@ export function mountSocial({ root, invite, owned = [], readContract, writeContr
       window.clearTimeout(pollTimer);
       window.clearTimeout(reactionTimer);
       root.removeEventListener('click', onClick);
+      root.removeEventListener('toggle', onToggle, true);
       root.classList.remove('lw-social-root', 'lw-social-reacting');
     },
   };
