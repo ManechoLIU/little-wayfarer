@@ -52,6 +52,26 @@ test('stale analyzed text cannot restore old choices', () => {
   assert.deepEqual(restored.candidates, []);
 });
 
+test('text-only draft restores writing without carrying old analysis or selected feelings', () => {
+  const source = {
+    text: '第一次去散步，想留住这阵风。',
+    analyzedText: '第一次去散步，想留住这阵风。',
+    analysisSource: 'model', summary: '旧的分析',
+    candidates: [{ eventId: 'explore', responseId: 'step-forward', evidence: '第一次', checked: true }],
+  };
+  assert.deepEqual(normalizeComposerDraft(source, { textOnly: true }), {
+    text: source.text, analyzedText: '', analysisSource: 'local', summary: '', candidates: [],
+  });
+  assert.equal(source.candidates[0].checked, true);
+});
+
+test('text-only drafts keep whitespace and limit writing to the supported length', () => {
+  const restored = normalizeComposerDraft({ text: `  ${'字'.repeat(4001)}` }, { textOnly: true });
+  assert.equal(restored.text, `  ${'字'.repeat(3998)}`);
+  assert.equal(restored.text.length, 4000);
+  assert.deepEqual(normalizeComposerDraft(null, { textOnly: true }).candidates, []);
+});
+
 
 test('explicit help to a friend is suggested, while its negation is not', () => {
   assert.ok(analyzeLocalJournal('今天帮助朋友搬完了家，晚上终于能坐下来喝一杯热茶。').some(item => item.eventId === 'help'));

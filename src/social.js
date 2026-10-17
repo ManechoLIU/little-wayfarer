@@ -63,7 +63,7 @@ function errorMessage(error, action) {
   if (error?.code === 4001 || error?.code === 'ACTION_REJECTED') return '你取消了钱包确认，没有产生链上记录。';
   const name = error?.revert?.name || error?.errorName || error?.data?.errorName;
   if (name === 'AlreadyEncouraged') return action === 'souvenir'
-    ? '这个钱包已经给这只旅伴送过一件来源物件了。每个钱包只能送一次。'
+    ? '这个钱包已经给这只旅伴送过一件纪念物了。每个钱包只能送一次。'
     : '这个钱包已经和这只旅伴互动过了。四种回应共用一次机会。';
   if (name === 'NotOrigin') return '只有这只旅伴的主人钱包可以穿戴或摘下物件。';
   if (name === 'InvalidInput') return action === 'reaction'
@@ -102,26 +102,24 @@ export function mountSocial({ root, invite, owned = [], readContract, writeContr
       <a class="lw-social-jump" href="#lw-social-interact">和这只互动 ↓</a>
     </header>
     <div class="lw-social-hero">
-      <div class="lw-social-copy"><span class="lw-social-kicker">A REAL JOURNEY ON MONAD</span><h1 id="lw-social-title"></h1><p data-social-meta></p><p class="lw-social-owner" data-social-owner></p></div>
+      <div class="lw-social-copy"><span class="lw-social-kicker">有朋友来过的路</span><h1 id="lw-social-title"></h1><p data-social-meta></p><p class="lw-social-owner" data-social-owner></p></div>
       <div class="lw-social-stage"><div class="lw-social-character" data-social-character></div><div class="lw-social-worn" data-social-worn></div><div class="lw-social-confetti" aria-hidden="true">${Array.from({ length: 18 }, (_, index) => `<i style="--i:${index}"></i>`).join('')}</div><div class="lw-social-smoke" aria-hidden="true"><i></i><i></i><i></i></div></div>
-      <div class="lw-social-live" data-social-live role="status" aria-live="polite">正在读取链上状态…</div>
+      <div class="lw-social-live" data-social-live role="status" aria-live="polite">正在看看它最近的样子…</div>
     </div>
     <section class="lw-social-panel" id="lw-social-interact">
-      <div class="lw-social-section-head"><div><span class="lw-social-kicker">ONE WALLET · ONE RESPONSE</span><h2>从这里，回应它一下</h2></div><button type="button" class="lw-social-refresh" data-social-refresh>刷新链上状态</button></div>
-      <p class="lw-social-note">花、鼓励、星星和彩纸弹共用一次机会。主人不能给自己互动；只有交易确认成功才会留下记录。</p>
+      <div class="lw-social-section-head"><div><span class="lw-social-kicker">留一份小小心意</span><h2>从这里，回应它一下</h2></div><button type="button" class="lw-social-refresh" data-social-refresh>看看新变化</button></div>
+      <p class="lw-social-note">选一份心意送给它，每位朋友可以送一次。需要钱包确认，花少量测试 MON 付手续费，不需要充值。</p>
       <div class="lw-social-reactions">${REACTIONS.map((item) => `<button type="button" data-social-action="reaction" data-social-gift="${item.id}"><b>${item.label}</b><span>${item.note}</span></button>`).join('')}</div>
     </section>
-    <section class="lw-social-panel">
-      <div class="lw-social-section-head"><div><span class="lw-social-kicker">A COPY, NOT A SALE</span><h2>送一件走过的物件</h2></div></div>
-      <p class="lw-social-note">只能从你已有链上记录的旅伴复制一件真实获得过的物件。不会消耗原物件，也不是 NFT 买卖。</p>
-      <div class="lw-social-sources" data-social-sources><p class="lw-social-empty">正在核对可赠送的来源…</p></div>
-    </section>
-    <section class="lw-social-panel">
-      <div class="lw-social-section-head"><div><span class="lw-social-kicker">SOUVENIR BOX</span><h2>这只旅伴收到的物件</h2></div><button type="button" class="lw-social-unwear" data-social-action="unwear" hidden>摘下当前物件</button></div>
-      <p class="lw-social-note">只有主人钱包可以穿戴。物件说明来自链上章节，不改变原本成长记录。</p>
+    <details class="lw-social-panel lw-social-extra"><summary>送一件有故事的物件</summary>
+      <p class="lw-social-note">从自己的旅伴身上，送出一件有故事的纪念。你仍会保留原来的那一件。</p>
+      <div class="lw-social-sources" data-social-sources><p class="lw-social-empty">正在打开自己的纪念物…</p></div>
+    </details>
+    <details class="lw-social-panel lw-social-extra"><summary>看看收到的纪念物</summary><button type="button" class="lw-social-unwear" data-social-action="unwear" hidden>摘下当前物件</button>
+      <p class="lw-social-note">送来的心意会留在这里。由旅伴的主人决定，带上哪一件。</p>
       <div class="lw-social-inbox" data-social-inbox><p class="lw-social-empty">正在打开收件箱…</p></div>
-    </section>
-    <footer class="lw-social-footer"><span>当前同行链接</span><code data-social-url></code><button type="button" data-social-copy>复制链接</button><p>页面不收集私密输入。角色是预设黏土形象，不代表或识别现实中的真人。</p></footer>
+    </details>
+    <footer class="lw-social-footer"><span>邀请朋友来看它</span><code data-social-url></code><button type="button" data-social-copy>复制链接</button><p>这里只分享旅伴和心意，不展示私人记录。</p></footer>
     <div class="lw-social-error" data-social-error role="alert" hidden></div>
   </section>`;
 
@@ -155,9 +153,9 @@ export function mountSocial({ root, invite, owned = [], readContract, writeContr
   }
 
   function renderIdentity() {
-    root.querySelector('#lw-social-title').textContent = `${current.name}，走到第 ${current.chapter} 章`;
-    root.querySelector('[data-social-meta]').textContent = `${current.marks?.length || 0} 枚成长印记 · 链上旅伴 #${current.id}`;
-    root.querySelector('[data-social-owner]').textContent = `链上归属 ${shortAddress(current.origin)} · ${shortAddress(current.address)}`;
+    root.querySelector('#lw-social-title').textContent = `${current.name}，有人来看你了。`;
+    root.querySelector('[data-social-meta]').textContent = `每一份心意，都有人记得。`;
+    root.querySelector('[data-social-owner]').textContent = `主人 ${shortAddress(current.origin)}`;
     characterEl.innerHTML = art(current, current.mood);
   }
 
@@ -242,7 +240,7 @@ export function mountSocial({ root, invite, owned = [], readContract, writeContr
     refreshing = true;
     if (manual) {
       window.clearTimeout(pollTimer);
-      liveEl.textContent = '正在手动读取链上状态…';
+      liveEl.textContent = '正在看看有没有新心意…';
     }
     try {
       const contract = readContract(current.address);
@@ -269,12 +267,12 @@ export function mountSocial({ root, invite, owned = [], readContract, writeContr
       renderInbox();
       renderWorn();
       updateReaction();
-      if (!reactionIsFresh()) liveEl.textContent = `链上状态已更新 · 收到 ${current.souvenirCount} 件来源物件`;
+      if (!reactionIsFresh()) liveEl.textContent = `已经更新 · 收到 ${current.souvenirCount} 件纪念物`;
     } catch (error) {
       consecutiveFailures += 1;
       const stopped = consecutiveFailures >= 2;
       liveEl.textContent = stopped ? '连续两次读取失败，自动刷新已暂停。' : '本次链上读取失败，稍后再试一次。';
-      reportError(stopped ? '自动读取已暂停。请检查网络后点击“刷新链上状态”。' : '暂时无法读取最新链上状态。', true);
+      reportError(stopped ? '自动读取已暂停。请检查网络后点击“看看新变化”。' : '暂时无法读取最新链上状态。', true);
     } finally {
       refreshing = false;
       if (!destroyed && consecutiveFailures < 2) pollTimer = window.setTimeout(() => refresh(), POLL_MS);
