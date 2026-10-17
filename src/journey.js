@@ -57,6 +57,11 @@ function validUint(value, max) {
   return Number.isInteger(value) && value >= 0 && value <= max;
 }
 
+function validGiftCounts(value) {
+  return Array.isArray(value) && value.length === 4
+    && value.every((count) => typeof count === 'string' && /^\d+$/.test(count));
+}
+
 function stableId(input) {
   let hash = 2166136261;
   for (const char of `${input.name}\u0000${input.seed}\u0000${input.palette}\u0000${input.trait}`) {
@@ -102,7 +107,10 @@ function validMemory(memory, travelerChapter) {
 }
 
 export function validateTraveler(value) {
-  if (!isPlainObject(value) || !hasExactKeys(value, TRAVELER_KEYS)) return false;
+  if (!isPlainObject(value)) return false;
+  const hasGifts = Object.hasOwn(value, 'giftCounts');
+  if (!hasExactKeys(value, hasGifts ? [...TRAVELER_KEYS, 'giftCounts'] : TRAVELER_KEYS)
+    || (hasGifts && !validGiftCounts(value.giftCounts))) return false;
   if (value.version !== 1 || typeof value.id !== 'string' || value.id.length === 0
     || !validName(value.name) || !validUint(value.seed, 0xffffffff) || !validUint(value.palette, 3)
     || !validUint(value.trait, 3) || !validUint(value.mood, 5) || !Number.isInteger(value.chapter)
@@ -148,7 +156,9 @@ export function applyExperience(traveler, eventId, responseId, now = Date.now())
   const marks = selected.mark && !traveler.marks.includes(selected.mark)
     ? [...traveler.marks, selected.mark]
     : [...traveler.marks];
-  return { ...traveler, mood: selected.mood, chapter, memories, marks };
+  const next = { ...traveler, mood: selected.mood, chapter, memories, marks };
+  if (Object.hasOwn(traveler, 'giftCounts')) next.giftCounts = [...traveler.giftCounts];
+  return next;
 }
 
 export function getAppearance(traveler) {

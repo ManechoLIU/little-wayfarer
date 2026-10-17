@@ -7,6 +7,9 @@ contract Wayfarer {
     struct Souvenir { uint256 source; uint256 target; uint32 chapter; uint8 markBit; address sender; uint64 timestamp; }
     uint256 public travelerCount;
     uint256 public souvenirCount;
+    mapping(uint256 => uint256[4]) private giftTotals;
+    function interactionVersion() external pure returns(uint8){return 2;}
+    function getGiftCounts(uint256 id) external view returns(uint256[4] memory){if(travelers[id].origin==address(0))revert InvalidInput();return giftTotals[id];}
     mapping(uint256 => Traveler) private travelers;
     mapping(uint256 => mapping(address => bool)) public hasEncouraged;
     mapping(uint256 => mapping(uint8 => uint32)) public firstMarkChapter;
@@ -42,8 +45,8 @@ contract Wayfarer {
     }
     function encourage(uint256 id,uint8 gift) external {
         Traveler storage t=travelers[id];if(t.origin==address(0)||gift>3||t.origin==msg.sender)revert InvalidInput();
-        if(hasEncouraged[id][msg.sender])revert AlreadyEncouraged();
         hasEncouraged[id][msg.sender]=true;
+        giftTotals[id][gift]++;
         if(gift==3){t.lastInteractionAt=uint64(block.timestamp);t.lastInteraction=gift;emit Encouraged(id,msg.sender,gift);return;}
         t.marks|=uint16(1<<(12+gift));t.mood=4;
         emit Encouraged(id,msg.sender,gift);
@@ -53,7 +56,6 @@ contract Wayfarer {
         Traveler storage src=travelers[source];
         Traveler storage dst=travelers[target];
         if(src.origin!=msg.sender||dst.origin==address(0)||dst.origin==msg.sender||markBit>10||firstMarkChapter[source][markBit]==0)revert InvalidInput();
-        if(hasSentSouvenir[target][msg.sender])revert AlreadyEncouraged();
         id=++souvenirCount;
         souvenirs[id]=Souvenir(source,target,firstMarkChapter[source][markBit],markBit,msg.sender,uint64(block.timestamp));
         receivedSouvenirs[target][dst.souvenirCount]=id;

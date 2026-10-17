@@ -11,6 +11,27 @@ const MEMORY_KEYS = ['chapter', 'title', 'text', 'eventId', 'responseId'];
 const POINT_KEYS = ['x', 'y'];
 const EVENT_BY_ID = new Map(EVENTS.map((event) => [event.id, event]));
 
+function validGiftCounts(value) {
+  return Array.isArray(value) && value.length === 4
+    && value.every((count) => typeof count === 'string' && /^\d+$/.test(count));
+}
+
+function validDiaryTraveler(value) {
+  if (!isPlainObject(value)) return false;
+  const copy = { ...value };
+  if (Object.hasOwn(copy, 'giftCounts')) {
+    if (!validGiftCounts(copy.giftCounts)) return false;
+    delete copy.giftCounts;
+  }
+  return validateTraveler(copy);
+}
+
+function copiedGiftCounts(traveler) {
+  if (!Object.hasOwn(traveler, 'giftCounts')) return undefined;
+  if (!validGiftCounts(traveler.giftCounts)) throw new TypeError('成长礼物计数无效');
+  return [...traveler.giftCounts];
+}
+
 function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
@@ -78,7 +99,9 @@ function validMemory(memory, fromChapter, toChapter) {
 }
 
 function validateEntryBase(value, textEntry) {
-  const keys = textEntry ? [...ENTRY_KEYS, 'body', 'mood'] : ENTRY_KEYS;
+  const hasGiftSnapshot = isPlainObject(value) && Object.hasOwn(value, 'giftCounts');
+  const keys = textEntry ? [...ENTRY_KEYS, 'body', 'mood'] : [...ENTRY_KEYS];
+  if (hasGiftSnapshot) keys.push('giftCounts');
   if (!hasExactKeys(value, keys)) return false;
   if (!validText(value.id, 240) || !validText(value.travelerId, 200) || !validText(value.name, 40)
     || !validTimestamp(value.timestamp) || !validDate(value.date, value.timestamp)
@@ -88,7 +111,8 @@ function validateEntryBase(value, textEntry) {
     || !Array.isArray(value.marks) || value.marks.length > 100
     || value.marks.some((mark) => !validText(mark, 100)) || new Set(value.marks).size !== value.marks.length
     || !Array.isArray(value.trail) || value.trail.length > MAX_TRAIL
-    || value.trail.some((point) => !hasExactKeys(point, POINT_KEYS) || !Number.isFinite(point.x) || !Number.isFinite(point.y))) return false;
+    || value.trail.some((point) => !hasExactKeys(point, POINT_KEYS) || !Number.isFinite(point.x) || !Number.isFinite(point.y))
+    || (hasGiftSnapshot && !validGiftCounts(value.giftCounts))) return false;
   if (textEntry) {
     if (!validText(value.body, MAX_BODY_LENGTH) || value.body.trim().length === 0 || !validVisitedText(value.mood)) return false;
     if (!validTextVisited(value.visited)) return false;
@@ -113,12 +137,14 @@ function validVisitedText(mood) {
 }
 
 export function validateDiaryEntry(value) {
-  const textEntry = hasExactKeys(value, [...ENTRY_KEYS, 'body', 'mood']);
+  const textKeys = [...ENTRY_KEYS, 'body', 'mood'];
+  const textEntry = hasExactKeys(value, textKeys)
+    || hasExactKeys(value, [...textKeys, 'giftCounts']);
   return validateEntryBase(value, textEntry);
 }
 
 function assertProgress(traveler, progress, now) {
-  if (!validateTraveler(traveler)) throw new TypeError('旅伴存档无效');
+  if (!validDiaryTraveler(traveler)) throw new TypeError('旅伴存档无效');
   if (!isPlainObject(progress) || !validTimestamp(now) || !validChapter(progress.startChapter)
     || progress.startChapter > traveler.chapter || !Array.isArray(progress.visited)
     || !progress.visited.every((id) => typeof id === 'string') || !Array.isArray(progress.trail)
@@ -151,6 +177,8 @@ export function makeDiaryEntry(traveler, progress, now = Date.now()) {
     trail: progress.trail.slice(-MAX_TRAIL).map(({ x, y }) => ({ x, y })),
     visited,
   };
+  const giftCounts = copiedGiftCounts(traveler);
+  if (giftCounts) entry.giftCounts = giftCounts;
   if (!validateDiaryEntry(entry)) throw new TypeError('散步手账无效');
   return entry;
 }
@@ -161,7 +189,7 @@ function sameTraveler(before, after) {
 }
 
 export function makeTextDiaryEntry(before, after, text, choices, now = Date.now()) {
-  if (!validateTraveler(before) || !validateTraveler(after) || !sameTraveler(before, after)
+  if (!validDiaryTraveler(before) || !validDiaryTraveler(after) || !sameTraveler(before, after)
     || !validTimestamp(now) || typeof text !== 'string' || text.trim().length === 0 || text.trim().length > MAX_BODY_LENGTH
     || !Array.isArray(choices) || choices.length > MAX_MEMORIES) {
     throw new TypeError('文字手账输入无效');
@@ -200,6 +228,8 @@ export function makeTextDiaryEntry(before, after, text, choices, now = Date.now(
     body: text.trim(),
     mood: after.mood,
   };
+  const giftCounts = copiedGiftCounts(after);
+  if (giftCounts) entry.giftCounts = giftCounts;
   if (!validateDiaryEntry(entry)) throw new TypeError('文字手账无效');
   return entry;
 }

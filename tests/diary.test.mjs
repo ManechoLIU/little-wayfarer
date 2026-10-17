@@ -149,3 +149,31 @@ test('text diary trims and accepts 4000 characters across Shanghai midnight, the
   assert.equal(validateDiaryEntry({ ...entry, body: '' }), false);
   assert.equal(validateDiaryEntry({ ...entry, mood: 9 }), false);
 });
+
+test('diary entries snapshot giftCounts without changing legacy entries', () => {
+  const traveler = { ...travelerWithWalk(), giftCounts: ['3', '2', '1', '0'] };
+  const entry = makeTextDiaryEntry(traveler, traveler, '收到三朵花。', [], START);
+  assert.deepEqual(entry.giftCounts, ['3', '2', '1', '0']);
+  traveler.giftCounts[0] = '9';
+  assert.deepEqual(entry.giftCounts, ['3', '2', '1', '0']);
+  assert.equal(validateDiaryEntry(entry), true);
+  const legacy = makeTextDiaryEntry(travelerWithWalk(), travelerWithWalk(), '旧记录。', [], START);
+  assert.equal(Object.hasOwn(legacy, 'giftCounts'), false);
+  assert.equal(validateDiaryEntry({ ...legacy, giftCounts: ['3', '2', '1', '0'] }), true);
+  assert.equal(validateDiaryEntry({ ...legacy, giftCounts: ['3', 'oops', '1', '0'] }), false);
+});
+
+test('invalid empty records are rejected without throwing away readable journal entries', () => {
+  assert.equal(validateDiaryEntry(null), false);
+  assert.equal(validateDiaryEntry(undefined), false);
+});
+
+test('reading a gifted walk cannot invalidate other saved entries or the next read', () => {
+  const plain = travelerWithWalk();
+  const legacyWalk = makeDiaryEntry(plain, progress(), START);
+  const legacyText = makeTextDiaryEntry(plain, plain, '旧手账仍然能打开。', [], START);
+  const giftedWalk = makeDiaryEntry({ ...plain, giftCounts: ['3','0','0','0'] }, progress(), START);
+  for (const saved of [legacyWalk, legacyText, giftedWalk, giftedWalk]) {
+    assert.equal(validateDiaryEntry(JSON.parse(JSON.stringify(saved))), true);
+  }
+});

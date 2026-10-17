@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { autoEquipGear, journeyTraceHTML } from '../src/gear.js';
+import { autoEquipGear, gearHTML, journeyTraceHTML } from '../src/gear.js';
 
 test('new marks automatically add their gear and retain current gear', () => {
   const result = autoEquipGear(
@@ -72,4 +72,20 @@ test('receiving gifts respects the three-item limit and does not rewear gifts in
   const after={...before,marks:[...before.marks,'一句加油']};
   assert.deepEqual(autoEquipGear(before,after,['cape','compass','patch']),['compass','patch','heartpin']);
   assert.deepEqual(autoEquipGear(after,after,[]),[]);
+});
+
+test('giftCounts render three independent visible flowers without manual wardrobe selection', () => {
+  const html = gearHTML({ marks: [], giftCounts: ['3', '0', '0', '0'], mood: 0 }, []);
+  assert.equal((html.match(/data-gift-kind="flower"/g) || []).length, 3);
+  assert.equal((html.match(/class="lw-gift-flower/g) || []).length, 3);
+  assert.match(html, /data-gift-total="flower">3</);
+});
+
+test('large gift counts cap visible items at nine and retain exact totals', () => {
+  const html = gearHTML({ marks: [], giftCounts: ['123', '12', '999999999999999999999', '4'], mood: 0 }, []);
+  assert.equal((html.match(/data-gift-kind="flower"/g) || []).length, 9);
+  assert.equal((html.match(/data-gift-kind="heartpin"/g) || []).length, 9);
+  assert.equal((html.match(/data-gift-kind="star"/g) || []).length, 9);
+  assert.equal((html.match(/data-gift-kind="confetti"/g) || []).length, 4);
+  assert.match(html, /data-gift-total="star">999999999999999999999</);
 });

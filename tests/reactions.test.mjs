@@ -59,7 +59,7 @@ test('gift3 records a short-lived interaction without changing mood or marks', a
   assert.equal(Number(after.lastInteraction), 3);
   assert.ok(Number(after.lastInteractionAt) > 0);
   assert.equal(await contract.hasEncouraged(targetId, await third.getAddress()), true);
-  await assertReverts(contract.connect(third).encourage(targetId, 3));
+  await (await contract.connect(third).encourage(targetId, 3)).wait();
   await assertReverts(contract.connect(third).encourage(targetId, 4));
 });
 

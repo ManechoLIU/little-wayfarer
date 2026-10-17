@@ -32,3 +32,14 @@ test('legacy history uses a disclosed base mood and rejects another traveler rec
   assert.equal(look.hasMoodSnapshot, false);
   assert.throws(() => historicalLook(traveler, { ...first, travelerId: 'b' }, []));
 });
+
+test('history uses the entry gift snapshot and does not leak current gifts backward', () => {
+  const current = { ...traveler, giftCounts: ['9', '2', '1', '0'] };
+  const old = { ...first, giftCounts: ['1', '0', '0', '0'] };
+  const look = historicalLook(current, old, [old], { old: [] });
+  assert.deepEqual(look.traveler.giftCounts, ['1', '0', '0', '0']);
+  assert.equal(look.hasGiftSnapshot, true);
+  const legacyLook = historicalLook(current, first, [first], { first: [] });
+  assert.equal(Object.hasOwn(legacyLook.traveler, 'giftCounts'), false);
+  assert.equal(legacyLook.hasGiftSnapshot, false);
+});

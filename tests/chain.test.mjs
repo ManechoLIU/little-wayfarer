@@ -125,7 +125,7 @@ test('batch rejects empty or overlong input atomically', async () => {
   assert.equal(Number(traveler.marks), 0);
 });
 
-test('encourage is one-time per other wallet, supports gifts 0..3, and gift3 is a transient interaction', async () => {
+test('the same companion can repeatedly send flowers and then all other gift types', async () => {
   const id = await create();
   await assertReverts(contract.encourage(id, 0));
   await (await contract.connect(companion).encourage(id, 3)).wait();
@@ -139,7 +139,13 @@ test('encourage is one-time per other wallet, supports gifts 0..3, and gift3 is 
   assert.equal(await contract.hasEncouraged(id, await third.getAddress()), true);
   assert.equal(Number((await contract.getTraveler(id)).marks) & (1 << 12), 1 << 12);
   assert.equal(Number((await contract.getTraveler(id)).mood), 4);
-  await assertReverts(contract.connect(third).encourage(id, 1));
+  for (const gift of [0, 0, 1, 2, 3, 3]) {
+    const receipt = await (await contract.connect(third).encourage(id, gift)).wait();
+    const event = receipt.logs.map(l => { try { return contract.interface.parseLog(l); } catch { return null; } }).find(l => l?.name === 'Encouraged');
+    assert.equal(Number(event.args.gift), gift);
+  }
+  assert.equal(Number((await contract.getTraveler(id)).marks), 28672);
+  assert.deepEqual(Array.from(await contract.getGiftCounts(id), Number), [3, 1, 1, 3]);
 
   const id2 = await create('二号', 8, 0, 0);
   await (await contract.connect(companion).encourage(id2, 1)).wait();

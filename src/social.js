@@ -1,4 +1,5 @@
 import { earnedGear, gearHTML } from './gear.js';
+import { readGiftCounts } from './gift-counts.js';
 
 const MARKS = Object.freeze(['勇气', '好奇', '韧性', '坚持', '连接', '独处', '修补', '诚实', '善意', '同行', '照顾自己']);
 const REACTIONS = Object.freeze([
@@ -64,7 +65,7 @@ function errorMessage(error, action) {
   const name = error?.revert?.name || error?.errorName || error?.data?.errorName;
   if (name === 'AlreadyEncouraged') return action === 'souvenir'
     ? '这个钱包已经给这只旅伴送过一件纪念物了。每个钱包只能送一次。'
-    : '这个钱包已经和这只旅伴互动过了。四种回应共用一次机会。';
+    : '这是旧版同行卡，尚有次数限制。请让主人在邀请朋友中换用新版同行卡。';
   if (name === 'NotOrigin') return '只有这只旅伴的主人钱包可以穿戴或摘下物件。';
   if (name === 'InvalidInput') return action === 'reaction'
     ? '旅伴主人不能给自己互动；如果你不是主人，请检查旅伴链接。'
@@ -92,13 +93,14 @@ export function mountSocial({ root, invite, owned = [], readContract, writeContr
   let consecutiveFailures = 0;
   let pollTimer = 0;
   let reactionTimer = 0;
+  let lastReactionCount = null;
   let inboxLoaded = false;
   let sourcesLoaded = false;
 
   root.classList.add('lw-social-root');
   root.innerHTML = `<section class="lw-social-shell" aria-labelledby="lw-social-title">
     <header class="lw-social-head">
-      <button type="button" class="lw-social-home" data-social-home>我也捏一只，自己出发</button>
+      <button type="button" class="lw-social-home" data-social-home>捏我的角色，自己出发</button>
       <a class="lw-social-jump" href="#lw-social-interact">和这只互动 ↓</a>
     </header>
     <div class="lw-social-hero">
@@ -108,7 +110,7 @@ export function mountSocial({ root, invite, owned = [], readContract, writeContr
     </div>
     <section class="lw-social-panel" id="lw-social-interact">
       <div class="lw-social-section-head"><div><span class="lw-social-kicker">留一份小小心意</span><h2>从这里，回应它一下</h2></div><button type="button" class="lw-social-refresh" data-social-refresh>看看新变化</button></div>
-      <p class="lw-social-note">选一份心意送给它，每位朋友可以送一次。需要钱包确认，花少量测试 MON 付手续费，不需要充值。</p>
+      <p class="lw-social-note">心意可以反复送，收到的花、鼓励和星星会累积在它身上。每次需要钱包确认，花少量测试 MON 付手续费。</p>
       <div class="lw-social-reactions">${REACTIONS.map((item) => `<button type="button" data-social-action="reaction" data-social-gift="${item.id}"><b>${item.label}</b><span>${item.note}</span></button>`).join('')}</div>
     </section>
     <details class="lw-social-panel lw-social-extra"><summary>送一件有故事的物件</summary>
@@ -167,6 +169,12 @@ export function mountSocial({ root, invite, owned = [], readContract, writeContr
   function updateReaction() {
     window.clearTimeout(reactionTimer);
     const fresh = reactionIsFresh();
+    const count = current.giftCounts?.[3] ?? String(current.lastInteractionAt);
+    if (fresh && count !== lastReactionCount) {
+      root.classList.remove('lw-social-reacting');
+      void root.offsetWidth;
+    }
+    lastReactionCount = count;
     root.classList.toggle('lw-social-reacting', fresh);
     if (!fresh) return;
     liveEl.textContent = '刚刚有人从另一块屏幕放了一枚彩纸弹。';
@@ -247,7 +255,9 @@ export function mountSocial({ root, invite, owned = [], readContract, writeContr
       const previousCount = current.souvenirCount;
       const previousWorn = current.wornSouvenirId;
       const raw = await contract.getTraveler(current.id);
-      current = normalizeTraveler(raw, current);
+      const giftCounts = await readGiftCounts(contract, current.id);
+      current = { ...normalizeTraveler(raw, current), ...(giftCounts ? { giftCounts } : {}) };
+      root.querySelector('.lw-social-note').textContent = giftCounts ? '心意可以反复送，花、鼓励和星星会累积在它身上。每次需要钱包确认，花少量测试 MON 付手续费。' : '这是旧版同行卡，朋友只能送一次。请让主人换用新版同行卡，便可反复送心意。';
       const inboxChanged = !inboxLoaded || current.souvenirCount !== previousCount || current.wornSouvenirId !== previousWorn;
       if (manual || inboxChanged) {
         inbox = await readInbox(contract, current.souvenirCount);
@@ -294,7 +304,7 @@ export function mountSocial({ root, invite, owned = [], readContract, writeContr
     } catch (error) {
       const message = errorMessage(error, action);
       reportError(message);
-      liveEl.textContent = '操作没有写入链上。';
+      liveEl.textContent = message;
     } finally {
       setBusy(false);
     }

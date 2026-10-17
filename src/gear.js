@@ -41,6 +41,50 @@ const SVG = Object.freeze({
   star: `<svg viewBox="0 0 290 290" aria-hidden="true"><path class="lw-gear-star" d="m239 38 10 21 23 3-17 16 4 23-20-11-21 11 4-23-17-16 24-3Z"/><circle class="lw-gear-star-dot" cx="199" cy="47" r="5"/><circle class="lw-gear-star-dot" cx="270" cy="113" r="7"/></svg>`,
 });
 
+const GIFT_TYPES = Object.freeze([
+  ['flower', 'lw-gift-flower', 'flower'],
+  ['heartpin', 'lw-gift-heartpin', 'heartpin'],
+  ['star', 'lw-gift-star', 'star'],
+  ['confetti', 'lw-gift-confetti', 'confetti'],
+]);
+const CONFETTI_SVG = `<svg viewBox="0 0 290 290" aria-hidden="true"><path class="lw-gear-confetti-a" d="m55 77 16-19 12 25-21 11Z"/><path class="lw-gear-confetti-b" d="m218 54 22 7-12 23-19-11Z"/><circle class="lw-gear-confetti-c" cx="229" cy="187" r="12"/><circle class="lw-gear-confetti-d" cx="71" cy="188" r="9"/></svg>`;
+
+function giftCounts(value) {
+  if (!Array.isArray(value) || value.length !== 4) return null;
+  if (!value.every((item) => typeof item === 'string' && /^\d+$/.test(item))) return null;
+  return value.map((item) => BigInt(item));
+}
+
+function giftHTML(traveler) {
+  const counts = giftCounts(traveler?.giftCounts);
+  if (!counts) return { html: '', ids: new Set(), label: '' };
+  const positions = {
+    flower: [[10, 20], [18, 32], [9, 44], [19, 56], [11, 68], [20, 78], [31, 84], [41, 87], [50, 88]],
+    heartpin: [[90, 20], [82, 32], [91, 44], [81, 56], [89, 68], [80, 78], [69, 84], [59, 87], [50, 88]],
+    star: [[32, 10], [44, 12], [56, 12], [68, 10], [76, 22], [24, 22], [35, 28], [65, 28], [50, 18]],
+    confetti: [[7, 9], [93, 9], [7, 88], [93, 88], [27, 7], [73, 7], [27, 93], [73, 93], [50, 94]],
+  };
+  const html = [];
+  const labels = [];
+  const ids = new Set(GIFT_TYPES.slice(0, 3).map(([id]) => id));
+  for (let typeIndex = 0; typeIndex < GIFT_TYPES.length; typeIndex += 1) {
+    const [kind, className, svgKey] = GIFT_TYPES[typeIndex];
+    const total = counts[typeIndex];
+    const visible = Number(total > 9n ? 9n : total);
+    for (let index = 0; index < visible; index += 1) {
+      const [left, top] = positions[kind][index];
+      const viewBox = { flower: '34 32 80 130', heartpin: '181 137 86 82', star: '194 25 90 100', confetti: '42 45 206 160' }[kind];
+      const svg = (svgKey === 'confetti' ? CONFETTI_SVG : SVG[svgKey]).replace('viewBox="0 0 290 290"', `viewBox="${viewBox}"`);
+      html.push(`<span class="${className} lw-gift-item lw-gift-slot-${index}" data-gift-kind="${kind}" style="left:${left}%;top:${top}%">${svg}</span>`);
+    }
+    if (total > 0n) {
+      labels.push(`${['花朵', '心意', '星星', '彩纸'][typeIndex]}累计${total}`);
+      html.push(`<span class="lw-gift-total lw-gift-total-${kind}" data-gift-total="${kind}">${total}</span>`);
+    }
+  }
+  return { html: html.join(''), ids, label: labels.join('，') };
+}
+
 const MOOD_SVG = Object.freeze({
   1: `<span class="lw-gear-mood lw-gear-mood-setback" aria-hidden="true"><svg viewBox="0 0 290 290"><path class="lw-gear-rain-cloud" d="M199 52c7-25 43-25 53-4 25-4 37 27 17 40h-74c-21-12-14-34 4-36Z"/><path class="lw-gear-raindrops" d="m207 101-6 14m29-14-6 14m29-14-6 14"/><circle class="lw-gear-mud" cx="81" cy="236" r="9"/><circle class="lw-gear-mud" cx="205" cy="245" r="6"/></svg></span>`,
   2: `<span class="lw-gear-mood lw-gear-mood-sad" aria-hidden="true"><svg viewBox="0 0 290 290"><path class="lw-gear-tear" d="M71 132c15 22 16 31 7 38-9 7-22 0-20-11 1-7 6-16 13-27Zm145 2c14 20 15 29 7 36-9 6-21 0-20-11 1-7 6-15 13-25Z"/><circle class="lw-gear-sad-bubble" cx="56" cy="105" r="7"/><circle class="lw-gear-sad-bubble" cx="235" cy="112" r="5"/></svg></span>`,
@@ -62,19 +106,21 @@ export function earnedGear(traveler) {
 
 export function gearHTML(traveler, equippedIds, mood = traveler?.mood) {
   const earned = earnedGear(traveler);
+  const gifts = giftHTML(traveler);
   const byId = new Map(earned.map((item) => [item.id, item]));
   const requested = equippedIds === undefined ? earned.slice(-3).map((item) => item.id) : (Array.isArray(equippedIds) ? equippedIds : []);
   const selected = [];
   const seen = new Set();
   for (const id of requested) {
     if (selected.length === 3) break;
-    if (typeof id !== 'string' || seen.has(id) || !byId.has(id)) continue;
+    if (typeof id !== 'string' || seen.has(id) || !byId.has(id) || gifts.ids.has(id)) continue;
     seen.add(id);
     selected.push(byId.get(id));
   }
   const safeMood = Number.isInteger(mood) && mood >= 0 && mood <= 5 ? mood : 0;
   const items = selected.map((item) => `<span class="lw-gear-item lw-gear-${item.id}" data-gear="${item.id}" data-source="${item.source}" aria-label="${item.label}，来自${item.source}">${SVG[item.id]}<span class="lw-gear-tag">来自「${item.source}」</span></span>`).join('');
-  return `<span class="lw-gear-layer" aria-label="旅途中获得的随身物件">${items}${MOOD_SVG[safeMood] || ''}</span>`;
+  const giftLabel = gifts.label ? `，${gifts.label}` : '';
+  return `<span class="lw-gear-layer" aria-label="旅途中获得的随身物件${giftLabel}">${items}${gifts.html}${MOOD_SVG[safeMood] || ''}</span>`;
 }
 
 export const gearCatalog = Object.freeze(Object.values(GEAR).map((item) => Object.freeze({ ...item })));

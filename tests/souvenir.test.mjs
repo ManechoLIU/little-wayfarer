@@ -87,16 +87,18 @@ test('sendSouvenir rejects missing marks, unauthorized source, self targets, inv
   await assertReverts(contract.sendSouvenir(sourceId, 999, 0));
 });
 
-test('the same wallet cannot send twice to one target through a different source', async () => {
+test('the same wallet can repeatedly send souvenir copies through either source', async () => {
   const sourceA = await create('来源一');
   const sourceB = await create('来源二');
   const targetId = await create('收件人', companion);
   await markSource(sourceA);
   await markSource(sourceB);
   await (await contract.sendSouvenir(sourceA, targetId, 0)).wait();
-  await assertReverts(contract.sendSouvenir(sourceB, targetId, 0));
-  assert.equal(await contract.souvenirCount(), 1n);
-  assert.equal(Number((await contract.getTraveler(targetId)).souvenirCount), 1);
+  await (await contract.sendSouvenir(sourceB, targetId, 0)).wait();
+  await (await contract.sendSouvenir(sourceA, targetId, 0)).wait();
+  assert.equal(await contract.souvenirCount(), 3n);
+  assert.equal(Number((await contract.getTraveler(targetId)).souvenirCount), 3);
+  assert.equal(await contract.receivedSouvenirs(targetId, 2), 3n);
 });
 
 test('only the recipient can wear its gift, can reject another gift, and can remove it', async () => {

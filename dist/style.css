@@ -13,3 +13,15 @@
 @media(max-width:650px){.hero-copy h1{font-size:36px;line-height:1.4}.hero-copy .lead{font-size:13px;line-height:1.95}.tagline{flex-wrap:wrap;gap:10px;font-size:10px}.journey-actions{position:sticky;bottom:0;z-index:15;background:#fff9eff2;backdrop-filter:blur(12px);margin:0 -14px;padding:12px 14px max(12px,env(safe-area-inset-bottom));border-top:1px solid #eee6d7}.journey-actions>.btn{font-size:12px;padding:12px 8px;border-radius:14px}.walk-intro p{font-size:12px}.walk-after{padding:10px 4px 12px}.compose-modal{padding:14px;width:100%;max-height:calc(100dvh - 20px);border-radius:24px}.modal-backdrop{padding:10px}.creator-card{margin-top:8px}.creator-card .stage{height:210px}.creator-card .stage>.clay{width:230px;height:230px}.float-label{font-size:9px;left:0;top:50px}.float-label.right{top:143px;right:0}.home-bottom p{font-size:12px}.home-bottom h3{font-size:14px}.form-note{font-size:11px}.postcard .clay{width:190px;height:190px}.modal .postcard p{font-size:13px}}
 
 #walking-world [data-finish]{display:none}#walking-world .lw-head>div:first-child{display:none}#walking-world .lw-head{justify-content:flex-end;min-height:44px;padding-top:7px;padding-bottom:7px}#walking-world .lw-nearby{display:none}#walking-world .lw-controls{display:flex;justify-content:center;min-height:54px;padding:9px}
+
+/* Keep creating a character within reach, while My exposes its everyday tools. */
+.site-header{position:sticky;top:0;z-index:16;background:#fff9eff5;backdrop-filter:blur(12px)}
+.header-actions{display:flex;align-items:center;gap:10px;flex:0 0 auto}
+.header-actions .btn,.site-header .nav button{min-height:44px}
+.creator-card{scroll-margin-top:104px}
+.create-shortcut{border-color:#f0bf89;background:#fff0db;color:#88542d;white-space:nowrap}
+.personal-actions .response{min-height:64px}
+.personal-secondary{display:flex;flex-wrap:wrap;gap:4px 8px;margin-top:18px;padding-top:12px;border-top:1px solid var(--line)}
+.personal-secondary .btn{min-height:44px;padding:10px 12px;font-size:12px;color:#93816b}
+@media(max-width:650px){.creator-card{scroll-margin-top:76px}.site-header{gap:12px}.site-header .brand{min-width:0;gap:8px}.header-actions{gap:6px}.header-actions .btn{padding:10px 12px;font-size:12px}.header-actions .personal-menu{min-width:48px}.personal-secondary{gap:4px}.personal-secondary .btn{padding:10px}}
+@media(max-width:350px){.site-header{padding-left:12px;padding-right:12px;gap:8px}.site-header .brand{font-size:15px}.site-header .brand small{font-size:6px;letter-spacing:1.5px}.header-actions .btn{padding:10px}}

@@ -119,3 +119,13 @@ test('invalid traveler input and corrupted saves are rejected', () => {
   assert.equal(validateTraveler({ ...traveler, marks: [''] }), false);
   assert.throws(() => getAppearance({ ...traveler, mood: 9 }));
 });
+
+test('giftCounts is an optional validated save field and survives experiences immutably', () => {
+  const traveler = { ...createTraveler(baseInput, 1000), giftCounts: ['3', '0', '2', '1'] };
+  assert.equal(validateTraveler(traveler), true);
+  const next = applyExperience(traveler, 'rest', 'sleep', 2000);
+  assert.deepEqual(next.giftCounts, traveler.giftCounts);
+  assert.notStrictEqual(next.giftCounts, traveler.giftCounts);
+  assert.equal(validateTraveler({ ...traveler, giftCounts: ['3', 'oops', '2', '1'] }), false);
+  assert.equal(validateTraveler({ ...traveler, giftCounts: ['3', '0', '2'] }), false);
+});
