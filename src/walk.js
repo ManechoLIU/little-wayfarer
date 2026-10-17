@@ -118,6 +118,7 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
   let nearbyId = '';
   let campOpened = state.campOpened;
   let currentMomentId = null;
+  let recordAppearanceActive = false;
   let pendingMomentId = null;
   let gesture = null;
   let gestureDirection = null;
@@ -184,21 +185,29 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
     lastMood = mood;
   }
 
-  function syncReplayCharacter() {
-    if (!replayMode) return;
-    const moment = selectReplayMoment(moments, position.x);
+  function syncRecordCharacter() {
+    const moment = replayMode ? selectReplayMoment(moments, position.x) : moments
+      .filter((entry) => entry && !entry.pending && entry.id != null && Number.isFinite(entry.x) && Number.isFinite(entry.y) && distance(position, entry) <= 70)
+      .reduce((nearest, entry) => !nearest || distance(position, entry) < distance(position, nearest) ? entry : nearest, null);
     const nextId = moment ? String(moment.id) : null;
-    if (nextId === currentMomentId) return;
+    if (nextId === currentMomentId) return recordAppearanceActive;
     currentMomentId = nextId;
+    recordAppearanceActive = false;
     root.querySelectorAll('[data-moment]').forEach((node) => node.classList.toggle('is-recalled', nextId !== null && node.dataset.moment === nextId));
-    hint.textContent = moment ? `回看这段路 · ${String(moment.label || '这一笔')}` : '回看这段路：前后走动，看看当时的样子';
-    if (!moment || typeof onRecallMoment !== 'function') return;
+    hint.textContent = moment ? `那时的样子 · ${String(moment.label || '这一笔')}` : replayMode ? '回看这段路：前后走动，看看当时的样子' : '回到现在，继续走走。';
+    if (!moment || typeof onRecallMoment !== 'function') return false;
     try {
       const snapshot = onRecallMoment(moment.id);
-      if (typeof snapshot === 'string') character.innerHTML = snapshot;
+      if (typeof snapshot === 'string' && snapshot.length) {
+        character.innerHTML = snapshot;
+        // Invalidate the live appearance cache so leaving a node restores it.
+        lastMood = null;
+        recordAppearanceActive = true;
+      }
     } catch (error) {
       showToast(error?.message || '这一笔暂时看不了。');
     }
+    return recordAppearanceActive;
   }
 
   function updateProgressUI() {
@@ -413,12 +422,11 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
   }
 
   function updateMood() {
-    if (replayMode) {
-      root.classList.remove('is-raining-on-player');
-      return;
-    }
-    renderCharacter(currentTraveler.mood);
     root.classList.remove('is-raining-on-player');
+    if (syncRecordCharacter()) return;
+    // Frame 5 is a stepping pose; never overwrite a saved difficult emotion.
+    const pose = !replayMode && moving && [0, 4, 5].includes(currentTraveler.mood) ? 5 : currentTraveler.mood;
+    renderCharacter(pose);
   }
 
   function moveFrame(dt, now) {
@@ -479,8 +487,7 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
       emitProgress(true);
     }
     updateNearby();
-    if (replayMode) syncReplayCharacter();
-    else updateMood();
+    updateMood();
     updateHold(now);
   }
 
@@ -644,8 +651,6 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
   root.addEventListener('click', onRootClick);
   document.addEventListener('visibilitychange', onVisibilityChange);
   root.querySelector('.lw-directions').addEventListener('pointerdown', moveButton);
-  if (replayMode) syncReplayCharacter();
-  else renderCharacter(currentTraveler.mood);
   updateProgressUI();
   paint(performance.now());
   raf = requestAnimationFrame(loop);
