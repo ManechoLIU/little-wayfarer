@@ -67,8 +67,22 @@ function initialState(traveler, progress) {
   };
 }
 
+export function selectReplayMoment(entries, positionX) {
+  const ordered = (Array.isArray(entries) ? entries : [])
+    .filter((entry) => entry && entry.id != null && Number.isFinite(entry.x))
+    .slice()
+    .sort((left, right) => left.x - right.x);
+  if (!ordered.length) return null;
+  let selected = ordered[0];
+  for (const entry of ordered) {
+    if (Number(positionX) < entry.x - 70) break;
+    selected = entry;
+  }
+  return selected;
+}
+
 /** Mount the walking world. Domain state and persistence remain owned by the caller. */
-export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgress, initialProgress, moments = [], onMoment, onWrite, onCamp, storyMode = false } = {}) {
+export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgress, initialProgress, moments = [], onMoment, onWrite, onCamp, storyMode = false, replayMode = false, onRecallMoment, onExitReplay } = {}) {
   if (!(root instanceof Element)) throw new TypeError('mountWalk 需要有效的 root');
   if (!traveler || typeof art !== 'function') {
     throw new TypeError('mountWalk 缺少 traveler 或 art');
@@ -95,14 +109,16 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
   let lastProgressTime = 0;
   let nearbyId = '';
   let campOpened = state.campOpened;
+  let currentMomentId = null;
+  let pendingMomentId = null;
 
   root.classList.add('lw-walk-root');
   root.innerHTML = `<section class="lw-shell" aria-labelledby="lw-title">
     <header class="lw-head">
-      <div><span class="lw-kicker">A PLACE TO KEEP WALKING</span><h2 id="lw-title">陪 ${escapeHTML(traveler.name)}，继续走走</h2></div>
+      <div><span class="lw-kicker">${replayMode ? 'LOOK BACK ON THE ROAD' : 'A PLACE TO KEEP WALKING'}</span><h2 id="lw-title">${replayMode ? `陪 ${escapeHTML(traveler.name)}，回看这段路` : `陪 ${escapeHTML(traveler.name)}，继续走走`}</h2></div>
       <div class="lw-progress" role="status" aria-live="polite"><b data-progress-count>${moments.length}</b><span> 段已记录</span><i data-progress-dots></i></div>
     </header>
-    <div class="lw-viewport" tabindex="0" role="application" aria-label="可行走的黏土小世界。方向键或 WASD 移动，也可以点击地面。想到什么，随时记一笔。">
+    <div class="lw-viewport" tabindex="0" role="application" aria-label="${replayMode ? '回看这段路。方向键或 WASD 前后移动，也可以点击地面查看已经留下的记录。' : '可行走的黏土小世界。方向键或 WASD 移动，也可以点击地面。想到什么，随时记一笔。'}">
       <div class="lw-world">
         ${landscapeHTML()}
         <div class="lw-rain" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
@@ -113,15 +129,15 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
         <div class="lw-footprints" aria-hidden="true"></div>
         <div class="lw-player" aria-label="${escapeHTML(traveler.name)}"><div class="lw-character"></div><span class="lw-player-shadow"></span></div>
       </div>
-      <div class="lw-hint" data-hint role="status" aria-live="polite">点地面，或用方向键 / WASD 出发</div>
+      <div class="lw-hint" data-hint role="status" aria-live="polite">${replayMode ? '回看这段路：前后走动，看看当时的样子' : '点地面，或用方向键 / WASD 出发'}</div>
       <div class="lw-toast" data-toast role="alert" hidden></div>
     </div>
     <footer class="lw-controls">
       <div class="lw-directions" aria-label="移动按钮">
         <button type="button" data-move="left" aria-label="向左走">←</button><button type="button" data-move="up" aria-label="向上走">↑</button><button type="button" data-move="down" aria-label="向下走">↓</button><button type="button" data-move="right" aria-label="向右走">→</button>
       </div>
-      <div class="lw-nearby" data-nearby aria-live="polite"><span>想到了什么，随时记一笔</span><button type="button" data-write>路上记一笔</button></div>
-      <button class="lw-finish" type="button" data-finish>去营火坐坐 →</button>
+      <div class="lw-nearby" data-nearby aria-live="polite"><span>${replayMode ? '沿着记录点，回看当时的变化' : '想到了什么，随时记一笔'}</span><button type="button" data-write>${replayMode ? '查看这一笔' : '路上记一笔'}</button></div>
+      <button class="lw-finish" type="button" data-finish>${replayMode ? '回到现在 →' : '去营火坐坐 →'}</button>
     </footer>
   </section>`;
 
@@ -155,7 +171,33 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
     lastMood = mood;
   }
 
+  function syncReplayCharacter() {
+    if (!replayMode) return;
+    const moment = selectReplayMoment(moments, position.x);
+    const nextId = moment ? String(moment.id) : null;
+    if (nextId === currentMomentId) return;
+    currentMomentId = nextId;
+    root.querySelectorAll('[data-moment]').forEach((node) => node.classList.toggle('is-recalled', nextId !== null && node.dataset.moment === nextId));
+    hint.textContent = moment ? `回看这段路 · ${String(moment.label || '这一笔')}` : '回看这段路：前后走动，看看当时的样子';
+    if (!moment || typeof onRecallMoment !== 'function') return;
+    try {
+      const snapshot = onRecallMoment(moment.id);
+      if (typeof snapshot === 'string') character.innerHTML = snapshot;
+    } catch (error) {
+      showToast(error?.message || '这一笔暂时看不了。');
+    }
+  }
+
   function updateProgressUI() {
+    if (replayMode) {
+      progressCount.textContent = String(moments.filter((moment) => moment && !moment.pending).length);
+      progressDots.innerHTML = '';
+      finishButton.disabled = busy;
+      finishButton.textContent = '回到现在 →';
+      campLabel.textContent = '回到现在';
+      root.querySelector('.lw-camp').classList.add('is-ready');
+      return;
+    }
     if (!storyMode) {
       progressCount.textContent = String(moments.filter(m=>!m.pending).length);
       progressDots.innerHTML = '';
@@ -215,16 +257,25 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
   }
 
   function updateNearby() {
+    if (replayMode) {
+      const moment = selectReplayMoment(moments, position.x);
+      const nextId = moment ? String(moment.id) : '';
+      if (nextId === nearbyId) return;
+      nearbyId = nextId;
+      nearby.innerHTML = `<span>${moment ? escapeHTML(moment.label || '这一笔') : '沿着记录点，回看当时的变化'}</span><button type="button" data-write${moment ? '' : ' disabled'}>查看这一笔</button>`;
+      return;
+    }
+    if (!storyMode) {
+      if (nearbyId === '__free-walk') return;
+      nearbyId = '__free-walk';
+      nearby.innerHTML = '<span>想到了什么，随时记一笔</span><button type="button" data-write>路上记一笔</button>';
+      return;
+    }
     const match = nearestStory();
     const nextId = match && match.gap < 155 ? match.story.id : '';
     if (nextId === nearbyId) return;
     nearbyId = nextId;
     root.querySelectorAll('.lw-stop.is-near').forEach((node) => node.classList.remove('is-near'));
-    if (!storyMode) {
-      if (!match || !nextId) nearby.innerHTML = '<span>想到了什么，随时记一笔</span><button type="button" data-write>路上记一笔</button>';
-      else nearby.innerHTML = `<span>${match.story.title} · 想到了什么，随时记一笔</span><button type="button" data-write>路上记一笔</button>`;
-      return;
-    }
     if (!match || !nextId) {
       nearby.innerHTML = '<span>走近彩色地点，会看到两个回应</span>';
       return;
@@ -245,7 +296,7 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
   }
 
   function experience(story, responseId) {
-    if (busy || visited.has(story.id)) return;
+    if (replayMode || busy || visited.has(story.id)) return;
     busy = true;
     target = null;
     updateProgressUI();
@@ -311,6 +362,10 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
       return;
     }
     const campDistance = distance(position, CAMP);
+    if (replayMode) {
+      hold = null;
+      return;
+    }
     if (!storyMode && campOpened && campDistance > 100) {
       campOpened = false;
       emitProgress(true);
@@ -345,6 +400,10 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
   }
 
   function updateMood() {
+    if (replayMode) {
+      root.classList.remove('is-raining-on-player');
+      return;
+    }
     const inRain = position.x > 500 && position.x < 745 && (!storyMode || !visited.has('setback'));
     renderCharacter(inRain ? 1 : moving ? 5 : currentTraveler.mood);
     root.classList.toggle('is-raining-on-player', inRain);
@@ -362,6 +421,15 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
       const tx = target.x - position.x;
       const ty = target.y - position.y;
       const gap = Math.hypot(tx, ty);
+      if (pendingMomentId !== null && gap <= 12) {
+        const momentId = pendingMomentId;
+        pendingMomentId = null;
+        target = null;
+        moving = false;
+        hint.textContent = '已经走到这一笔。';
+        try { onMoment?.(momentId); } catch (error) { showToast(error?.message || '这一笔暂时看不了。'); }
+        return;
+      }
       if (gap < 5) target = null;
       else { dx = tx / gap; dy = ty / gap; }
     }
@@ -374,6 +442,14 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
       position.y = clamp(position.y + dy * SPEED * .56 * dt, 318, 445);
       if (Math.abs(dx) > .05) direction = dx > 0 ? 1 : -1;
       recordTrail(now);
+      if (pendingMomentId !== null && target && distance(position, target) <= 12) {
+        const momentId = pendingMomentId;
+        pendingMomentId = null;
+        target = null;
+        moving = false;
+        hint.textContent = '已经走到这一笔。';
+        try { onMoment?.(momentId); } catch (error) { showToast(error?.message || '这一笔暂时看不了。'); }
+      }
     }
   }
 
@@ -389,7 +465,8 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
       emitProgress(true);
     }
     updateNearby();
-    updateMood();
+    if (replayMode) syncReplayCharacter();
+    else updateMood();
     updateHold(now);
   }
 
@@ -398,8 +475,9 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
     const dt = Math.min(.04, (now - previousTime) / 1000 || 0);
     previousTime = now;
     moveFrame(dt, now);
+    if (destroyed) return;
     paint(now);
-    raf = requestAnimationFrame(loop);
+    if (!destroyed) raf = requestAnimationFrame(loop);
   }
 
   function keyboardBlocked(event) {
@@ -411,6 +489,7 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
     if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'w', 'a', 's', 'd'].includes(key) || keyboardBlocked(event)) return;
     event.preventDefault();
+    pendingMomentId = null;
     keys.add(key);
   }
   function onKeyUp(event) { keys.delete(event.key.length === 1 ? event.key.toLowerCase() : event.key); }
@@ -418,6 +497,7 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
 
   function onViewportClick(event) {
     if (event.target.closest('button') || busy || finished) return;
+    pendingMomentId = null;
     const rect = viewport.getBoundingClientRect();
     const worldRect=world.getBoundingClientRect();target = validPoint({ x: event.clientX - worldRect.left, y: event.clientY - worldRect.top }, position);
     viewport.focus({ preventScroll: true });
@@ -429,6 +509,7 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
     event.preventDefault();
     const map = { left: 'ArrowLeft', right: 'ArrowRight', up: 'ArrowUp', down: 'ArrowDown' };
     const key = map[button.dataset.move];
+    pendingMomentId = null;
     keys.add(key);
     button.setPointerCapture?.(event.pointerId);
     const release = () => { keys.delete(key); button.removeEventListener('pointerup', release); button.removeEventListener('pointercancel', release); };
@@ -437,10 +518,11 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
   }
 
   function onRootClick(event) {
-    const moment=event.target.closest('[data-moment]');if(moment){target=null;keys.clear();onMoment?.(moment.dataset.moment);return;}
-    if(event.target.closest('[data-write]')){target=null;keys.clear();try{onWrite?.({x:Math.round(position.x),y:Math.round(position.y)});}catch(error){showToast(error?.message||'暂时不能记下这一笔。');}return;}
+    const momentNode=event.target.closest('[data-moment]');if(momentNode){const moment=moments.find((item)=>item&&String(item.id)===momentNode.dataset.moment&&Number.isFinite(item.x)&&Number.isFinite(item.y));if(moment){keys.clear();hold=null;pendingMomentId=String(moment.id);target=validPoint({x:moment.x,y:moment.y},position);hint.textContent=`正在走向这一笔 · ${String(moment.label||'记录')}`;}return;}
+    if(event.target.closest('[data-write]')){target=null;pendingMomentId=null;keys.clear();try{if(replayMode){if(currentMomentId!=null)onMoment?.(currentMomentId);}else onWrite?.({x:Math.round(position.x),y:Math.round(position.y)});}catch(error){showToast(error?.message||(replayMode?'这一笔暂时看不了。':'暂时不能记下这一笔。'));}return;}
     const sign = event.target.closest('.lw-sign');
     if (sign) {
+      pendingMomentId = null;
       const story = STORIES.find((item) => item.id === sign.dataset.event);
       const index = story?.responses.findIndex(([id]) => id === sign.dataset.response) ?? -1;
       if (story && index >= 0 && !visited.has(story.id)) target = { x: story.x + (index ? 58 : -58), y: story.y + 8 };
@@ -448,12 +530,20 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
     }
     const alternative = event.target.closest('[data-respond]');
     if (alternative) {
+      pendingMomentId = null;
       const [eventId, responseId] = alternative.dataset.respond.split(':');
       const story = STORIES.find((item) => item.id === eventId);
       if (story) experience(story, responseId);
       return;
     }
     if (event.target.closest('[data-finish]')) {
+      pendingMomentId = null;
+      if (replayMode) {
+        target = null;
+        keys.clear();
+        try { onExitReplay?.(); } catch (error) { showToast(error?.message || '暂时回不到现在，请再试一次。'); }
+        return;
+      }
       if (!storyMode && distance(position, CAMP) < 68) openCamp();
       else target = { ...CAMP };
     }
@@ -465,7 +555,8 @@ export function mountWalk({ root, traveler, art, onExperience, onFinish, onProgr
   viewport.addEventListener('click', onViewportClick);
   root.addEventListener('click', onRootClick);
   root.querySelector('.lw-directions').addEventListener('pointerdown', moveButton);
-  renderCharacter(currentTraveler.mood);
+  if (replayMode) syncReplayCharacter();
+  else renderCharacter(currentTraveler.mood);
   updateProgressUI();
   paint(performance.now());
   raf = requestAnimationFrame(loop);

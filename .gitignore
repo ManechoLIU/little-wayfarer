@@ -6,3 +6,6 @@ design/
 
 .vercel/
 .vercel
+
+# Local wallet receipt is not part of public source assets.
+submission/screenshots/testnet-faucet-receipt.jpg
