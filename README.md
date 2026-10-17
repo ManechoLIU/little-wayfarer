@@ -2,7 +2,7 @@
 
 把普通的一天走成小旅行，再把走过的经历，变成彼此身上的纪念物。
 
-Monad Blitz Shanghai 2026 参赛原型。当前构建和 64 项自动测试通过；公开体验网站与 GitHub 源码已可访问；真实测试网部署和双人闭环尚未验收。用户暂不决定参赛，作品未提交。
+Monad Blitz Shanghai 2026 参赛原型。当前构建和 64 项自动测试通过；公开体验网站与 GitHub 源码已可访问；合约已部署并核对链上运行代码，真实出生、章节和双人闭环尚未验收。用户暂不决定参赛，作品未提交。
 
 ## 使用
 
@@ -40,7 +40,8 @@ npm run dev
 
 - 体验网址：https://little-wayfarer-blitz.vercel.app/
 - GitHub：https://github.com/ManechoLIU/little-wayfarer
-- 测试网合约地址／部署交易：待核验后填写
+- 测试网合约：[0x7fbBDABf88e330e9546867eF2b6778824632d60b](https://testnet.monadexplorer.com/address/0x7fbBDABf88e330e9546867eF2b6778824632d60b)
+- 部署核验：2026-10-17，Monad Testnet 10143，区块 71786076 读取到 6209 字节运行代码，与本仓库 Solidity Paris、优化 200 次编译结果完全一致；运行代码哈希 `0x2f3b9f15082d2ec6544f288f7779c3b2e9135c4978097321ae1e7e630cad394f`。未取得部署交易哈希，不将地址推导视为交易回执。
 - 参赛提交：按用户决定暂不提交
 
 角色图由 OpenAI 图像生成工具按原创说明制作；源码采用 MIT 许可证。
