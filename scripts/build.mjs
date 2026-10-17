@@ -1,0 +1,12 @@
+import fs from 'node:fs';
+import solc from 'solc';
+import {build} from 'esbuild';
+const file='Wayfarer.sol',source=fs.readFileSync('contracts/'+file,'utf8');
+const out=JSON.parse(solc.compile(JSON.stringify({language:'Solidity',sources:{[file]:{content:source}},settings:{optimizer:{enabled:true,runs:200},evmVersion:'paris',outputSelection:{'*':{'*':['abi','evm.bytecode.object']}}}})));
+for(const e of out.errors||[])if(e.severity==='error')throw Error(e.formattedMessage);
+const c=out.contracts[file].Wayfarer;
+fs.mkdirSync('src/generated',{recursive:true});fs.mkdirSync('dist',{recursive:true});
+fs.writeFileSync('src/generated/contract.json',JSON.stringify({abi:c.abi,bytecode:'0x'+c.evm.bytecode.object}));
+await build({entryPoints:['src/app.js'],bundle:true,format:'esm',outfile:'dist/app.js',minify:true});
+for(const f of ['index.html','style.css'])fs.copyFileSync('src/'+f,'dist/'+f);
+fs.cpSync('public','dist',{recursive:true});console.log('Built Little Wayfarer. Contract bytes:',c.evm.bytecode.object.length/2);
