@@ -1,0 +1,80 @@
+{
+  "attempts": 3,
+  "cases": [
+    {
+      "name": "sad",
+      "httpStatus": 200,
+      "upstream": {
+        "status": 200,
+        "usage": {
+          "prompt_tokens": 262,
+          "completion_tokens": 12,
+          "total_tokens": 274,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "prompt_cache_hit_tokens": 0,
+          "prompt_cache_miss_tokens": 262
+        },
+        "model": "deepseek-flash"
+      },
+      "result": {
+        "mood": 2,
+        "evidence": "今天有点难过"
+      },
+      "expected": 2,
+      "reloadedMood": 2,
+      "pass": true
+    },
+    {
+      "name": "recovered",
+      "httpStatus": 200,
+      "upstream": {
+        "status": 200,
+        "usage": {
+          "prompt_tokens": 274,
+          "completion_tokens": 12,
+          "total_tokens": 286,
+          "prompt_tokens_details": {
+            "cached_tokens": 128
+          },
+          "prompt_cache_hit_tokens": 128,
+          "prompt_cache_miss_tokens": 146
+        },
+        "model": "deepseek-flash"
+      },
+      "result": {
+        "mood": 4,
+        "evidence": "现在特别开心"
+      },
+      "expected": 4,
+      "reloadedMood": 4,
+      "pass": true
+    },
+    {
+      "name": "other-person",
+      "httpStatus": 200,
+      "upstream": {
+        "status": 200,
+        "usage": {
+          "prompt_tokens": 270,
+          "completion_tokens": 10,
+          "total_tokens": 280,
+          "prompt_tokens_details": {
+            "cached_tokens": 128
+          },
+          "prompt_cache_hit_tokens": 128,
+          "prompt_cache_miss_tokens": 142
+        },
+        "model": "deepseek-flash"
+      },
+      "result": {
+        "mood": null,
+        "evidence": ""
+      },
+      "expected": null,
+      "reloadedMood": 4,
+      "pass": true
+    }
+  ]
+}

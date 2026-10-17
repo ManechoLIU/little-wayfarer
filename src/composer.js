@@ -1,4 +1,5 @@
 import { EVENTS } from './journey.js';
+import { validateRecordAnalysis } from './record-analysis.js';
 
 const CATEGORY = Object.freeze({
   explore: '探索', setback: '受挫', lonely: '孤单', mistake: '犯错', help: '帮助', rest: '休息',
@@ -99,7 +100,7 @@ export function normalizeComposerDraft(value, { textOnly = false } = {}) {
   return { text, analyzedText, analysisSource, summary, candidates };
 }
 
-export function mountComposer({ root, traveler, art, onSave, onWalk, initialDraft, onDraft } = {}) {
+export function mountComposer({ root, traveler, art, onSave, onWalk, initialDraft, onDraft, analyzeJournal, provider = 'DeepSeek' } = {}) {
   if (!(root instanceof Element)) throw new TypeError('mountComposer 需要有效的 root');
   if (!traveler || typeof art !== 'function' || typeof onSave !== 'function') throw new TypeError('mountComposer 缺少 traveler、art 或 onSave');
 
@@ -121,10 +122,11 @@ export function mountComposer({ root, traveler, art, onSave, onWalk, initialDraf
       <textarea id="lw-compose-journal" data-compose-text maxlength="4000" rows="6" placeholder="刚刚发生了什么？或是，有个念头想留下……"></textarea>
       <div class="lw-compose-count"><span>这一笔，会成为它身上的新痕迹。</span><b data-compose-count>0 / 4000</b></div>
     </section>
-    <p class="lw-compose-private">只记在这台设备，随时回来看看。</p>
+    <p class="lw-compose-private" data-compose-private></p>
     <div class="lw-compose-error" data-compose-error role="alert" hidden></div>
     <div class="lw-compose-savebar">
       <button type="button" data-compose-save>记下这一笔</button>
+      <button type="button" class="lw-compose-back" data-compose-plain hidden>仅保存文字，不理解表情</button>
       <p data-compose-status role="status" aria-live="polite"></p>
     </div>
     ${typeof onWalk === 'function' ? '<button type="button" class="lw-compose-back" data-compose-back>先回到路上</button>' : ''}
@@ -133,6 +135,8 @@ export function mountComposer({ root, traveler, art, onSave, onWalk, initialDraf
   const textarea = root.querySelector('[data-compose-text]');
   const count = root.querySelector('[data-compose-count]');
   const saveButton = root.querySelector('[data-compose-save]');
+  const plainButton = root.querySelector('[data-compose-plain]');
+  const privacy = root.querySelector('[data-compose-private]');
   const backButton = root.querySelector('[data-compose-back]');
   const status = root.querySelector('[data-compose-status]');
   const error = root.querySelector('[data-compose-error]');
@@ -154,11 +158,21 @@ export function mountComposer({ root, traveler, art, onSave, onWalk, initialDraf
   function lockControls(locked) {
     textarea.disabled = locked;
     saveButton.disabled = locked;
+    plainButton.disabled = locked;
     if (backButton) backButton.disabled = locked;
     saveButton.textContent = locked ? '正在记下…' : '记下这一笔';
   }
 
-  async function save() {
+  function setAnalysisService(service) {
+    analyzeJournal = service.analyzeJournal;
+    provider = service.provider || 'DeepSeek';
+    plainButton.hidden = typeof analyzeJournal !== 'function';
+    privacy.textContent = typeof analyzeJournal === 'function'
+      ? `点「记下这一笔」，本次文字将发送给 ${provider} 理解表情；记录仍保存在这台设备，不会上链或随邀请公开。也可选择仅保存文字。`
+      : '记录保存在这台设备。表情理解暂未开启，这次仅保存文字。';
+  }
+
+  async function save(understand = true) {
     if (busy || destroyed) return;
     const text = textarea.value.trim();
     if (!text) {
@@ -172,7 +186,16 @@ export function mountComposer({ root, traveler, art, onSave, onWalk, initialDraf
     status.textContent = '';
     lockControls(true);
     try {
-      await onSave({ text, choices: [] });
+      let analysis;
+      if (understand && typeof analyzeJournal === 'function') {
+        saveButton.textContent = '正在读懂这一笔…';
+        const result = await analyzeJournal(text);
+        if (destroyed) return;
+        analysis = validateRecordAnalysis(result, text);
+        if (!analysis) throw Error('这次没能读懂，文字还在。可以重试，或选择仅保存文字。');
+      }
+      if (destroyed) return;
+      await onSave({ text, choices: [], ...(analysis ? { analysis } : {}) });
       if (destroyed) return;
       textarea.value = '';
       updateCount();
@@ -197,16 +220,19 @@ export function mountComposer({ root, traveler, art, onSave, onWalk, initialDraf
   }
 
   function onClick(event) {
+    if (event.target.closest('[data-compose-plain]')) { save(false); return; }
     if (event.target.closest('[data-compose-save]')) { save(); return; }
     if (!busy && event.target.closest('[data-compose-back]')) onWalk?.();
   }
 
   root.addEventListener('click', onClick);
   textarea.addEventListener('input', onInput);
+  setAnalysisService({ analyzeJournal, provider });
   updateCount();
 
   return {
     getDraft,
+    setAnalysisService,
     destroy() {
       if (destroyed) return;
       destroyed = true;

@@ -50,3 +50,6 @@
 @media (prefers-reduced-motion: reduce) {
   .lw-compose-root * { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
 }
+
+.lw-compose-savebar [data-compose-plain] { min-height: 44px; background: transparent; color: var(--lw-compose-blue); box-shadow: none; font-size: 13px; font-weight: 400; padding: 10px; }
+.lw-compose-root [hidden] { display: none !important; }
