@@ -89,7 +89,7 @@ export function mountSocial({ root, invite, owned = [], readContract, writeContr
   let worn = null;
   let destroyed = false;
   let actionBusy = false;
-  let refreshing = false;
+  let refreshTask = null;
   let consecutiveFailures = 0;
   let pollTimer = 0;
   let reactionTimer = 0;
@@ -121,7 +121,7 @@ export function mountSocial({ root, invite, owned = [], readContract, writeContr
       <p class="lw-social-note">送来的心意会留在这里。由旅伴的主人决定，带上哪一件。</p>
       <div class="lw-social-inbox" data-social-inbox><p class="lw-social-empty">正在打开收件箱…</p></div>
     </details>
-    <footer class="lw-social-footer"><span>邀请朋友来看它</span><code data-social-url></code><button type="button" data-social-copy>复制链接</button><p>这里只分享旅伴和心意，不展示私人记录。</p></footer>
+    <footer class="lw-social-footer"><span>邀请朋友来看它</span><input data-social-url readonly aria-label="同行链接" inputmode="none"><button type="button" data-social-copy>复制链接</button><p>这里只分享旅伴和心意，不展示私人记录。</p></footer>
     <div class="lw-social-error" data-social-error role="alert" hidden></div>
   </section>`;
 
@@ -132,7 +132,8 @@ export function mountSocial({ root, invite, owned = [], readContract, writeContr
   const inboxEl = root.querySelector('[data-social-inbox]');
   const errorEl = root.querySelector('[data-social-error]');
   const unwearButton = root.querySelector('[data-social-action="unwear"]');
-  root.querySelector('[data-social-url]').textContent = location.href;
+  const shareInput = root.querySelector('[data-social-url]');
+  shareInput.value = location.href;
 
   function reportError(message, quiet = false) {
     errorEl.textContent = message;
@@ -238,14 +239,22 @@ export function mountSocial({ root, invite, owned = [], readContract, writeContr
     }));
   }
 
-  async function refresh({ manual = false } = {}) {
-    if (destroyed || refreshing) return;
+  function refresh({ manual = false } = {}) {
+    if (destroyed) return Promise.resolve(false);
+    if (refreshTask) {
+      // A transaction needs a read started after its receipt, not an older poll.
+      return manual ? refreshTask.then(() => refresh({ manual: true })) : refreshTask;
+    }
     if (actionBusy && !manual) {
       window.clearTimeout(pollTimer);
       pollTimer = window.setTimeout(() => refresh(), POLL_MS);
-      return;
+      return Promise.resolve(false);
     }
-    refreshing = true;
+    refreshTask = readAndRender({ manual }).finally(() => { refreshTask = null; });
+    return refreshTask;
+  }
+
+  async function readAndRender({ manual }) {
     if (manual) {
       window.clearTimeout(pollTimer);
       liveEl.textContent = '正在看看有没有新心意…';
@@ -270,6 +279,7 @@ export function mountSocial({ root, invite, owned = [], readContract, writeContr
       worn = current.wornSouvenirId !== '0'
         ? inbox.find((item) => item.id === current.wornSouvenirId) || normalizeSouvenir(await contract.souvenirs(current.wornSouvenirId), current.wornSouvenirId)
         : null;
+      if (destroyed) return false;
       consecutiveFailures = 0;
       clearError();
       renderIdentity();
@@ -278,13 +288,14 @@ export function mountSocial({ root, invite, owned = [], readContract, writeContr
       renderWorn();
       updateReaction();
       if (!reactionIsFresh()) liveEl.textContent = '旅伴的样子已更新 · 每一份心意，都有人记得。';
+      return true;
     } catch (error) {
       consecutiveFailures += 1;
       const stopped = consecutiveFailures >= 2;
       liveEl.textContent = stopped ? '连续两次读取失败，自动刷新已暂停。' : '本次链上读取失败，稍后再试一次。';
       reportError(stopped ? '自动读取已暂停。请检查网络后点击“看看新变化”。' : '暂时无法读取最新链上状态。', true);
+      return false;
     } finally {
-      refreshing = false;
       if (!destroyed && consecutiveFailures < 2) pollTimer = window.setTimeout(() => refresh(), POLL_MS);
     }
   }
@@ -299,8 +310,8 @@ export function mountSocial({ root, invite, owned = [], readContract, writeContr
       liveEl.textContent = '交易已发送，等待链上确认…';
       const receipt = await tx.wait();
       if (!receiptSucceeded(receipt)) throw new Error('交易回执未成功。');
-      await refresh({ manual: true });
-      liveEl.textContent = success;
+      const updated = await refresh({ manual: true });
+      liveEl.textContent = updated ? success : '这次操作已确认，暂时未能更新形象。请点「看看新变化」刷新，不用重复发送。';
     } catch (error) {
       const message = errorMessage(error, action);
       reportError(message);
@@ -310,12 +321,21 @@ export function mountSocial({ root, invite, owned = [], readContract, writeContr
     }
   }
 
-  function onClick(event) {
+  async function onClick(event) {
     const home = event.target.closest('[data-social-home]');
     if (home) { onHome?.(); return; }
     if (event.target.closest('[data-social-refresh]')) { if (!actionBusy) { consecutiveFailures = 0; refresh({ manual: true }); } return; }
     if (event.target.closest('[data-social-copy]')) {
-      navigator.clipboard?.writeText(location.href).then(() => { liveEl.textContent = '同行链接已复制。'; }).catch(() => reportError('浏览器没有允许复制，请从地址栏复制链接。'));
+      try {
+        if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable');
+        await navigator.clipboard.writeText(shareInput.value);
+        liveEl.textContent = '同行链接已复制。';
+      } catch {
+        shareInput.focus();
+        shareInput.select();
+        shareInput.setSelectionRange(0, shareInput.value.length);
+        liveEl.textContent = '没有自动复制，请长按链接复制。';
+      }
       return;
     }
     const action = event.target.closest('[data-social-action]');
